@@ -45,6 +45,7 @@ void test('public terminal selects installed models, rejects over 40B and submit
     assert.equal(requests[0].locale,'en');
     assert.equal(requests[0].inspection,'small');
     assert.equal(requests[0].implementation,'large');
+    assert.match(screen(),/Approved; waiting to run/);
     assert.match(screen(),/hello.txt/);
     assert.match(screen(),/Nothing has been adopted/);
   } finally {

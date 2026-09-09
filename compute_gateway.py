@@ -240,7 +240,8 @@ class Gateway:
             return web.json_response(self.public_job(job),status=202)
 
     def public_job(self,job):
-        return {**{k:job[k] for k in ("id","status","result","expires")},'compute':{
+        approved=bool(self.store.db.execute("SELECT 1 FROM audit WHERE event='owner_decision' AND json_extract(body,'$.job')=? AND json_extract(body,'$.status')='APPROVED' LIMIT 1",(job['id'],)).fetchone())
+        return {**{k:job[k] for k in ("id","status","result","expires")},'approved':approved,'compute':{
             'node':job['body']['pair'].get('compute_node','primary'),
             **{r:job['body']['pair'][r]['name'] for r in ('inspection','implementation')}}}
     async def job_status(self,request):

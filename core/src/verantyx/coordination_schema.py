@@ -82,8 +82,15 @@ def validate_editor_test_contract(document, selected):
     require(not protected.intersection(portable_path_key(path) for path in document["files"]), "TEST_SCOPE")
 
 
+def relation_schema(ids):
+    # Relations connect existing, distinct interpretation nodes only.
+    if len(ids) < 2:
+        return {"const": []}
+    return array({"anyOf": [_object({"kind": {"enum": list(RELATIONS)}, "from": {"const": source},
+                 "to": {"enum": [target for target in ids if target != source]}}) for source in ids]}, maximum=128)
+
+
 def schema(request, *, line_blocks=False):
-    relation = _object({"kind": {"enum": list(RELATIONS)}, "from": identifier(), "to": identifier()})
     properties = {"context_sha256": {"const": request["shared_context"]["sha256"]}}
     if request["format"] == "verantyx.handoff-plan-request.v1":
         units = source_units(request)
@@ -91,8 +98,7 @@ def schema(request, *, line_blocks=False):
         nodes = [_object({**{key: {"const": value} for key, value in unit.items()},
                           "meaning": _string(), "disposition": {"enum": list(DISPOSITIONS)},
                           "strength": {"enum": list(STRENGTHS)}, "alternatives": array(_string(), maximum=8)}) for unit in units]
-        relations = array({"anyOf": [_object({"kind": {"enum": list(RELATIONS)}, "from": {"const": source},
-                             "to": {"enum": [target for target in ids if target != source]}}) for source in ids]}, maximum=128) if len(ids) > 1 else array({"type": "object"}, maximum=0)
+        relations = relation_schema(ids)
         choices = fixed_array([_object({"id": {"const": "choice-" + letter}, "text": _string()}) for letter in 'AB'])
         # At most 32 paired cases cover all 64 citation slots. The meanings and
         # selected outcome remain generated; coverage alone is not correctness.
@@ -110,10 +116,12 @@ def schema(request, *, line_blocks=False):
                           "choice": {"enum": [x["id"] for x in c["choices"]] + ["UNRESOLVED"]},
                           "reason": _string()}) for c in plan["cases"]]
         properties.update(plan_sha256={"const": request["response_template"]["plan_sha256"]},
-                          acknowledgements=fixed_array(nodes), relations=array(relation, maximum=128),
+                          acknowledgements=fixed_array(nodes), relations=relation_schema([n["id"] for n in plan["interpretations"]]),
                           case_choices=fixed_array(cases),
                           files={"type": "object", "additionalProperties": {"type": "string"}, "maxProperties": 16},
-                          tests={"const": fixed_tests} if fixed_tests else array(_string(), maximum=16),
+                          tests={"const": fixed_tests} if fixed_tests else (
+                              array({"enum": [s["path"] for s in request["selected_files"] if s["path"].endswith(".py")]}, maximum=16)
+                              if any(s["path"].endswith(".py") for s in request["selected_files"]) else {"const": []}),
                           notes=_string(8000))
         if line_blocks:
             properties.pop("files")

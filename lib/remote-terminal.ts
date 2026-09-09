@@ -109,12 +109,15 @@ export function remoteTerminal(term: Terminal, gateway: string, status: (value:s
       busy=true;ownsBusy=true;
       const accepted=await api<{id:string;status:string;compute?:{node:string;inspection:string;implementation:string}}>('/v1/jobs','POST',{request:value,locale,inspection,implementation,key:crypto.randomUUID()});
       job=accepted.id;if(accepted.compute)ui.write(accepted.compute.node+' · inspection: '+accepted.compute.inspection+' / implementation: '+accepted.compute.implementation);ui.write(label().waiting);setStatus(label().waiting);
-      let previous='';
+      let previous='', approvalShown=false;
       while(!closed){
-        const result=await api<{status:string;result?:{answer?:string;error?:string;learning?:unknown[];reuse?:unknown[];proposed_files?:Record<string,string>}}>('/v1/jobs/'+encodeURIComponent(job));
+        const result=await api<{status:string;approved?:boolean;result?:{answer?:string;error?:string;learning?:unknown[];reuse?:unknown[];proposed_files?:Record<string,string>}}>('/v1/jobs/'+encodeURIComponent(job));
+        if(!approvalShown&&(result.approved||['APPROVED','RUNNING','SUCCEEDED'].includes(result.status))){
+          ui.write(label().approved);setStatus(label().approved);approvalShown=true;
+        }
         if(result.status!==previous){
           previous=result.status;
-          if(result.status==='RUNNING')setStatus(label().running);
+          if(result.status==='RUNNING'){ui.write(label().running);setStatus(label().running);}
           if(result.status==='APPROVED')setStatus(label().approved);
         }
         if(!['PENDING','APPROVED','RUNNING'].includes(result.status)){

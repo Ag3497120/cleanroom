@@ -106,3 +106,11 @@ class Routing(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['options']['num_predict'],8192)
         config['max_output_tokens']=32768
         with self.assertRaises(LedgerError):payload(config,request)
+    async def test_approval_remains_visible_after_fast_failure(self):
+        first=await self.submit('1')
+        job=self.g.store.get(first['id'])
+        self.g.store.approve(job['id'],job['fingerprint'],True)
+        self.g.store.finish(job['id'],'FAILED',{'error':'fixture'})
+        public=self.g.public_job(self.g.store.get(job['id']))
+        self.assertTrue(public['approved'])
+        self.assertEqual(public['status'],'FAILED')

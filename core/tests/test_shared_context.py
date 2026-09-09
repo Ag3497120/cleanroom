@@ -414,6 +414,17 @@ print(json.dumps(d))
         document['acknowledgements'].pop()
         self.assertFalse(validator.is_valid(document))
 
+    def test_editor_relation_schema_rejects_claim_ids_and_self_links(self):
+        from jsonschema import Draft202012Validator
+        from verantyx.coordination_schema import relation_schema
+        validator = Draft202012Validator(relation_schema(['intent-1', 'intent-2']))
+        self.assertTrue(validator.is_valid([{'kind':'DEPENDS_ON','from':'intent-1','to':'intent-2'}]))
+        for source, target in [('claim-001','intent-1'), ('intent-1','intent-1')]:
+            self.assertFalse(validator.is_valid([{'kind':'DEPENDS_ON','from':source,'to':target}]))
+        single = Draft202012Validator(relation_schema(['intent-1']))
+        self.assertTrue(single.is_valid([]))
+        self.assertFalse(single.is_valid([{'kind':'DEPENDS_ON','from':'claim-001','to':'intent-1'}]))
+
     def test_citation_slots_preserve_multilingual_text_and_group_at_the_limit(self):
         from verantyx.coordination_schema import source_units
         request = {'shared_context': {'sources': [{'id': 'original', 'text': '先に接続する。独立性は後で、例外は残す。\nKeep the original; defer optimization.'}]}}
