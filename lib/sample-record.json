@@ -1,0 +1,21 @@
+{
+  "runtime_version": "0.7.4.dev0",
+  "recorded_as_of": "2026-09-09T03:26:20.141976Z",
+  "artificial_generators": true,
+  "live_model_calls": 0,
+  "metrics": {
+    "first_human_decisions": 1,
+    "second_human_decisions": 0,
+    "second_reused_rules": 1,
+    "reused_check_model_calls": 0
+  },
+  "limitations": [
+    "提案と判断はテスト用の入力です。実際のAIの品質や本人の判断を測定したものではありません。",
+    "計算器の検査は answer() が 2 を返すという固定条件です。入力依存性や任意の正しさを検証する例ではありません。",
+    "候補の検査結果です。本体への採用・取り込みは行っていません。",
+    "0回は保存した検査を使う操作だけの生成器呼出し数です。仕事全体の呼出し数ではありません。"
+  ],
+  "source_sha256": "ee74f7ea0c188ecad788edfca025c085a1cfc9a43fb28be98157bdd16effbef0",
+  "canonical_adopted": false,
+  "source": "docs/product/replay.json"
+}
