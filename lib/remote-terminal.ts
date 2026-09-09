@@ -28,7 +28,7 @@ export function remoteTerminal(term: Terminal, gateway: string, status: (value:s
     if (!gateway) throw Error(label().offline);
     const r=await fetch(gateway+path,{method,signal:abort.signal,headers:{...(token?{Authorization:'Bearer '+token}:{}),...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
     const data=await r.json() as T & {error?:string};
-    if (!r.ok) throw Error(data.error==='COMPUTE_BUSY'?routingText[locale]:errors[data.error??'']??data.error??String(r.status));
+    if (!r.ok) throw Error(data.error==='MODEL_SELECTION_NOT_REQUEST'?label().choose:data.error==='COMPUTE_BUSY'?routingText[locale]:errors[data.error??'']??data.error??String(r.status));
     return data;
   };
   const catalog = async () => {
@@ -59,11 +59,15 @@ export function remoteTerminal(term: Terminal, gateway: string, status: (value:s
         ui.write(label().help);await catalog();
         ui.write('/model inspection 2\n/model implementation 1');return;
       }
-      if(!inspection||!implementation){
+      {
         const pair=text.match(/^(\d+)\s*(?:と|,|and|&)\s*(\d+)$/);
-        if(pair){await handle('/model inspection '+pair[1]);await handle('/model implementation '+pair[2]);return;}
+        if(pair){if(busy){ui.write(label().busy);return;}inspection='';implementation='';await handle('/model inspection '+pair[1]);await handle('/model implementation '+pair[2]);return;}
         const index=models.findIndex(m=>m.name===text);
-        if(/^\d+$/.test(text)||index>=0)text='/model '+(!inspection?'inspection':'implementation')+' '+(index>=0?index+1:text);
+        if(/^\d+$/.test(text)||index>=0){
+          if(busy){ui.write(label().busy);return;}
+          if(inspection&&implementation){inspection='';implementation='';refreshFooter();}
+          text='/model '+(!inspection?'inspection':'implementation')+' '+(index>=0?index+1:text);
+        }
       }
       if(text.startsWith('/lang ') && !text.includes('\n')) {
         const lang=text.slice(6).trim();

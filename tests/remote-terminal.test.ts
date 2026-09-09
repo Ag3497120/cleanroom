@@ -36,6 +36,7 @@ void test('public terminal selects installed models, rejects over 40B and submit
     remote.input('/model inspection 1\r/model implementation 2\r/lang en\r');await settle();
     assert.match(screen(),/GitHub sign-in/);
     remote.input('/login\r');await settle();
+    remote.input('1\r2\r');await settle();assert.equal(requests.length,0);
     remote.input('\x1b[200~First line\n二行目\x1b[201~');await settle();
     assert.equal(requests.length,0);
     remote.input('\r');await settle();

@@ -79,3 +79,30 @@ class Routing(unittest.IsolatedAsyncioTestCase):
     def test_public_endpoints_cannot_be_configured(self):
         for endpoint in ['http://10.0.0.2:11434','http://example.com:11434','http://user@127.0.0.1:11435','http://127.0.0.1:11435/path']:
             with self.assertRaises(ValueError):loopback_endpoint(endpoint)
+    async def test_selection_is_never_submitted(self):
+        class Request:
+            subject='1'
+            async def json(self):return dict(request='2',locale='ja',inspection='small',implementation='large',key='selection-key-1234')
+        with self.assertRaisesRegex(Refused,'MODEL_SELECTION_NOT_REQUEST'):await self.g.submit(Request())
+        self.g.approve_dialog.assert_not_awaited()
+        self.assertEqual(self.g.store.db.execute('select count(*) from jobs').fetchone()[0],0)
+    async def test_owner_approval_is_bound_to_pending_fingerprint(self):
+        job=await self.submit('1');saved=self.g.store.get(job['id'])
+        choice=asyncio.get_running_loop().create_future();self.g.approvals[job['id']]=choice
+        class Request:
+            async def json(self):return dict(mode='approve',job=job['id'],fingerprint='wrong',accepted=True)
+        with self.assertRaisesRegex(Refused,'APPROVAL_STALE'):await self.g.owner_action(Request())
+        self.assertFalse(choice.done())
+        class Valid:
+            async def json(self):return dict(mode='approve',job=job['id'],fingerprint=saved['fingerprint'],accepted=False)
+        await self.g.owner_action(Valid());self.assertFalse(choice.result())
+    def test_generation_budget_leaves_room_for_input(self):
+        from verantyx.model_api import payload
+        from verantyx.errors import LedgerError
+        config=self.g.adapter_profile(model('small',2))
+        request={'task':{'request':'x'*9000}}
+        result=payload(config,request)
+        self.assertLessEqual(result['options']['num_ctx'],32768)
+        self.assertEqual(result['options']['num_predict'],8192)
+        config['max_output_tokens']=32768
+        with self.assertRaises(LedgerError):payload(config,request)

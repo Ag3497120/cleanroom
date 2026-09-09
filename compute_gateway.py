@@ -91,6 +91,7 @@ class Gateway:
         self.store=Store(self.directory,clock)
         self.http=None
         self.flows={}
+        self.approvals={}
         self.tasks=set()
         self.active={}
         self.owner_token=secrets.token_urlsafe(32)
@@ -201,6 +202,9 @@ class Gateway:
         who=self.identity(request);self.throttle(("submit",who["subject"]),10)
         body=await request.json()
         if set(body)!={"request","locale","inspection","implementation","key"}: raise Refused("INVALID_REQUEST")
+        if (not isinstance(body['request'],str) or re.fullmatch(r'\s*\d+(?:\s*(?:と|,|and|&)\s*\d+)?\s*',body['request'])
+                or body['request'].strip() in ('verantyx setup','/setup',body['inspection'],body['implementation'])):
+            raise Refused('MODEL_SELECTION_NOT_REQUEST')
         async with self.admission_lock:
             old=self.store.db.execute("SELECT id FROM jobs WHERE subject=? AND key=?",(who['subject'],body['key'])).fetchone()
             if old:
@@ -252,8 +256,30 @@ class Gateway:
     async def approve_dialog(self,job):
         body=job["body"];pair=body["pair"]
         message=f"実行先: {pair.get('compute_node','primary')}\n利用者: GitHub ID {job['subject']}\n検査補助: {pair['inspection']['name']}\n実装案: {pair['implementation']['name']}\nローカル合計: {pair['total_parameters']/1e9:g}B / {10 if pair.get('compute_node')=='backup-24GB' else 40}B\n\n{body['request'][:2000]}\n\nこの一件に計算資源を使用しますか？"
-        code,out,_=await bounded_process(script_args(APPROVAL_SCRIPT,message),timeout=310,limit=32768)
-        return code==0 and out.decode().strip()=="allow"
+        choice=asyncio.get_running_loop().create_future()
+        self.approvals[job['id']]=choice
+        self.spawn(self.request_email(job,message))
+        dialog=asyncio.create_task(bounded_process(script_args(APPROVAL_SCRIPT,message),timeout=310,limit=32768))
+        try:
+            done,_=await asyncio.wait((choice,dialog),return_when=asyncio.FIRST_COMPLETED)
+            if choice in done: return choice.result()
+            code,out,_=dialog.result()
+            return code==0 and out.decode().strip()=='allow'
+        finally:
+            self.approvals.pop(job['id'],None)
+            choice.cancel();dialog.cancel()
+            await asyncio.gather(dialog,return_exceptions=True)
+
+    async def request_email(self,job,message):
+        email=self.cfg.get('notify_email')
+        if not email: return
+        # A link opens the Mac-local decision page. Opening mail cannot approve a job.
+        text=message+'\n\nこのMacで許可・拒否を選択: '+self.owner_url+'\n依頼ID: '+job['id']+'\n承認画面の待機は最大5分です。リンクを開くだけでは実行されません。'
+        script=MAIL_SCRIPT.replace('本日のSpark利用上限','計算資源の使用許可')
+        try:
+            code,_,_=await bounded_process(script_args(script,email,text),timeout=30,limit=32768)
+            self.store.audit('request_email',{'job':job['id'],'sent':code==0})
+        except Exception: self.store.audit('request_email',{'job':job['id'],'sent':False})
 
     async def run_job(self,jobid):
         job=self.store.get(jobid)
@@ -291,7 +317,7 @@ class Gateway:
         if model["provider"]=="codex":
             return {"argv":[self.cfg.get("python","/usr/local/bin/python3"),str(ROOT/"spark_adapter.py")]}
         return {"format":"verantyx.model-api.v1","provider":"ollama","model":model["name"],"endpoint":self.endpoints[node]+"/api/chat","key_env":None,
-                "allow_loopback_http":True,"timeout":180,"max_output_tokens":32768,"max_response_bytes":262144,"thinking":False,"context_window":32768}
+                "allow_loopback_http":True,"timeout":180,"max_output_tokens":8192,"max_response_bytes":262144,"thinking":False,"context_window":32768}
 
     async def execute(self,job):
         # This workspace belongs to this authenticated user, not the owner's checkout.
@@ -309,7 +335,12 @@ class Gateway:
             value=self.adapter_profile(model,job["body"]["pair"].get("compute_node","primary"))
             target.write_text(json.dumps(value));target.chmod(0o600);adapters.append(target)
         code,out,_=await bounded_process(base+["ask","--adapter",adapters[0],"--editor-adapter",adapters[1],"--proposal-only","--key",job["id"],"--timeout","180","--max-repairs","0","--",job["body"]["request"]],timeout=900)
-        if code: raise Refused("VERANTYX_REQUEST_FAILED")
+        if code:
+            try: error=json.loads(out).get('error',{}).get('code','VERANTYX_REQUEST_FAILED')
+            except (ValueError,AttributeError): error='VERANTYX_REQUEST_FAILED'
+            if not isinstance(error,str) or not re.fullmatch(r'[A-Z0-9_]{1,100}',error): error='VERANTYX_REQUEST_FAILED'
+            self.store.audit('execution_error',{'job':job['id'],'code':error,'exit_code':code})
+            raise Refused(error)
         value=json.loads(out);state=value.get("state",{})
         response=state.get("latest_response",{})
         if not response.get("document"): raise Refused("RESPONSE_INCOMPLETE")
@@ -352,19 +383,31 @@ class Gateway:
     async def owner_page(self,request):
         text="""<!doctype html><html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Verantyx — Mac管理</title>
 <style>body{background:#101012;color:#eee;font:16px Menlo,monospace;padding:24px}button,input{font:inherit;background:#202025;color:#eee;border:1px solid #666;padding:10px;margin:8px}pre{white-space:pre-wrap}</style>
-<h1>Verantyx — このMacの計算資源</h1><pre id="state">状態を確認しています…</pre><p>この変更は本日分のみです。OpenAIの契約上限やSparkの本人専用制限は変更しません。</p>
+<h1>Verantyx — このMacの計算資源</h1><h2>依頼の許可・拒否</h2><div id="pending"></div><pre id="state">状態を確認しています…</pre><p>この変更は本日分のみです。OpenAIの契約上限やSparkの本人専用制限は変更しません。</p>
 <button id="local">本日はローカルモデルを使う</button><label>本日の人数枠 <input id="limit" type="number" min="100" max="10000" value="100"></label><button id="change">人数枠を変更</button>
 <p>一人で複数アカウントを使っていると確認した場合は、GitHub IDを利用停止にできます。</p><input id="subject" placeholder="GitHubの数値ID"><button id="block">このIDを停止</button><script src="/owner.js"></script></html>"""
         return web.Response(text=text,content_type="text/html")
     async def owner_js(self,request):
-        js="""let token='';async function refresh(){const r=await fetch('/owner/state');const d=await r.json();token=d.token;document.querySelector('#state').textContent=JSON.stringify(d.policy,null,2);}
+        js="""let token='';async function refresh(){const r=await fetch('/owner/state');const d=await r.json();token=d.token;document.querySelector('#state').textContent=JSON.stringify(d.policy,null,2);
+const list=document.querySelector('#pending');list.replaceChildren();for(const job of d.pending){const item=document.createElement('div');const text=document.createElement('pre');text.textContent=job.summary;item.append(text);for(const [label,accepted] of [['この依頼を許可',true],['拒否',false]]){const button=document.createElement('button');button.textContent=label;button.onclick=()=>change({mode:'approve',job:job.id,fingerprint:job.fingerprint,accepted});item.append(button);}list.append(item);}if(!d.pending.length)list.textContent='承認待ちの依頼はありません。';}
 async function change(body){const r=await fetch('/owner/action',{method:'POST',headers:{'Content-Type':'application/json','X-Owner-Token':token},body:JSON.stringify(body)});if(!r.ok)alert('変更できませんでした');await refresh();}
-document.querySelector('#local').onclick=()=>change({mode:'local'});document.querySelector('#change').onclick=()=>change({mode:'limit',limit:Number(document.querySelector('#limit').value)});document.querySelector('#block').onclick=()=>change({mode:'block',subject:document.querySelector('#subject').value});refresh();"""
+document.querySelector('#local').onclick=()=>change({mode:'local'});document.querySelector('#change').onclick=()=>change({mode:'limit',limit:Number(document.querySelector('#limit').value)});document.querySelector('#block').onclick=()=>change({mode:'block',subject:document.querySelector('#subject').value});refresh();setInterval(refresh,3000);"""
         return web.Response(text=js,content_type="application/javascript")
-    async def owner_state(self,request): return web.json_response({"token":self.owner_token,"policy":self.store.policy()})
+    async def owner_state(self,request):
+        pending=[]
+        for jobid in self.approvals:
+            j=self.store.get(jobid);b=j['body'];p=b['pair']
+            if j['status']=='PENDING' and j['expires']>self.clock():
+                pending.append({'id':jobid,'fingerprint':j['fingerprint'],'summary':f"{jobid}\nGitHub ID: {j['subject']}\n{p.get('compute_node','primary')}\n検査補助: {p['inspection']['name']}\n実装案: {p['implementation']['name']}\n合計: {p['total_parameters']/1e9:g}B\n\n{b['request']}"})
+        return web.json_response({'token':self.owner_token,'policy':self.store.policy(),'pending':pending})
     async def owner_action(self,request):
         body=await request.json()
-        if body.get("mode")=="block":
+        if body.get('mode')=='approve':
+            j=self.store.get(body.get('job'));future=self.approvals.get(j['id'])
+            if (j['status']!='PENDING' or j['expires']<=self.clock() or j['fingerprint']!=body.get('fingerprint')
+                    or type(body.get('accepted')) is not bool or not future or future.done()): raise Refused('APPROVAL_STALE')
+            future.set_result(body['accepted'])
+        elif body.get("mode")=="block":
             if not re.fullmatch(r"[0-9]{1,20}",str(body.get("subject",""))): raise Refused("INVALID_ID")
             self.store.db.execute("INSERT OR IGNORE INTO blocked VALUES(?)",(body["subject"],))
             self.store.audit("owner_block",{"subject":body["subject"]})
