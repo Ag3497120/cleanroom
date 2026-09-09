@@ -11,9 +11,12 @@ const texts = {
 type Locale = keyof typeof texts;
 type Model = {name:string; parameters:number|null; digest:string; provider:string};
 type Catalog = {models:Model[];spark:{name:string;available:boolean};identity:{subject:string;login:string}|null};
+const fallbackNotice = {ja:'主Macが使用中なら、予備Macの小型2モデル（合計10B以下）へ自動切替します。番号を1つずつ入力すると検査補助→実装案の順に選べます。',en:'When the main Mac is busy, two smaller backup models (up to 10B total) are used. Enter numbers one at a time: inspection, then implementation.', 'zh-Hans':'主Mac忙碌时自动使用备用Mac的两个小模型（合计不超过10B）。依次输入检查、实现模型编号。',ko:'주 Mac 사용 중에는 예비 Mac의 작은 모델 두 개(합계 10B 이하)로 전환합니다. 검사, 구현 순서로 번호를 입력하세요.',es:'Si el Mac principal está ocupado, se usan dos modelos auxiliares (hasta 10B en total). Introduce primero el número de inspección y después el de implementación.'};
+const routingText = {ja:'現在混雑しているか、予備Macが接続されていません。少し待ってから同じ依頼を再送するか、後でもう一度お越しください。利用枠は消費していません。',en:'Compute is busy or the backup Mac is offline. Wait and resend, or return later. No daily allowance was used.', 'zh-Hans':'计算资源忙碌或备用Mac离线。请稍后重试，未消耗每日次数。',ko:'계산 자원이 사용 중이거나 예비 Mac이 오프라인입니다. 나중에 다시 시도하세요. 이용 횟수는 차감되지 않았습니다.',es:'Los equipos están ocupados o el Mac auxiliar está desconectado. Vuelve a intentarlo más tarde. No se ha usado tu cuota.'};
 const errors: Record<string,string> = {PAIR_OVER_40B:'40B limit',DISTINCT_MODELS_REQUIRED:'Choose different models',PARAMETERS_UNKNOWN:'Unknown model size',ONE_REQUEST_PER_DAY:'Daily account allowance used',SPARK_OWNER_ONLY:'Spark: owner only',SPARK_DAILY_LIMIT:'Daily Spark allowance reached',MODEL_CHANGED_REAPPROVE:'Model changed; new approval required',LOGIN_REQUIRED:'Use /login',GITHUB_LOGIN_NOT_CONFIGURED:'GitHub login is not configured'};
 
 export function remoteTerminal(term: Terminal, gateway: string, status: (value:string)=>void) {
+  let choosingLanguage=true;
   let locale:Locale = 'ja', token='', models:Model[]=[], inspection='', implementation='', job='', busy=false, closed=false;
   const abort = new AbortController();
   const label = () => texts[locale];
@@ -25,14 +28,14 @@ export function remoteTerminal(term: Terminal, gateway: string, status: (value:s
     if (!gateway) throw Error(label().offline);
     const r=await fetch(gateway+path,{method,signal:abort.signal,headers:{...(token?{Authorization:'Bearer '+token}:{}),...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
     const data=await r.json() as T & {error?:string};
-    if (!r.ok) throw Error(errors[data.error??'']??data.error??String(r.status));
+    if (!r.ok) throw Error(data.error==='COMPUTE_BUSY'?routingText[locale]:errors[data.error??'']??data.error??String(r.status));
     return data;
   };
   const catalog = async () => {
     const data=await api<Catalog>('/v1/models');models=data.models;
     if(data.spark.available) models.push({name:data.spark.name,parameters:0,digest:'subscription-owner-only',provider:'codex'});
-    ui.write(models.map((m,i)=>String(i+1)+'. '+m.name+'  '+(m.parameters===null?label().unknown:m.provider==='codex'?'ChatGPT / low':String(m.parameters/1e9)+'B')).join('\n'));
-    ui.write(label().owner+'\n'+label().cap+'\n'+label().effort);
+    ui.write(models.map((m,i)=>'['+String(i+1)+'] '+m.name+'  '+(m.parameters===null?label().unknown:m.provider==='codex'?'ChatGPT / low':String(m.parameters/1e9)+'B')).join('\n'));
+    ui.write(label().owner+'\n'+label().cap+'\n'+label().effort+'\n'+fallbackNotice[locale]);
   };
   async function cancel() {
     if(!job) return;
@@ -40,9 +43,28 @@ export function remoteTerminal(term: Terminal, gateway: string, status: (value:s
     catch(e) { ui.write(String(e)); }
   }
   async function handle(value:string) {
-    const text=value.trim();if(!text||closed)return;
+    let text=value.trim();if(!text||closed)return;
     let ownsBusy=false;
     try {
+      if(choosingLanguage){
+        const langs:Locale[]=['ja','en','zh-Hans','ko','es'];
+        const chosen=langs[Number(text)-1]??(text.replace('/lang ','') as Locale);
+        if(!(chosen in texts)){ui.write('1 日本語 · 2 English · 3 简体中文 · 4 한국어 · 5 Español');return;}
+        locale=chosen;choosingLanguage=false;document.documentElement.lang=locale;
+        ui.write(label().welcome+'\n'+label().help+'\n'+label().cap);refreshFooter();
+        if(gateway)await catalog();else ui.write(label().offline);
+        return;
+      }
+      if(text==='verantyx setup'||text==='/setup'){
+        ui.write(label().help);await catalog();
+        ui.write('/model inspection 2\n/model implementation 1');return;
+      }
+      if(!inspection||!implementation){
+        const pair=text.match(/^(\d+)\s*(?:と|,|and|&)\s*(\d+)$/);
+        if(pair){await handle('/model inspection '+pair[1]);await handle('/model implementation '+pair[2]);return;}
+        const index=models.findIndex(m=>m.name===text);
+        if(/^\d+$/.test(text)||index>=0)text='/model '+(!inspection?'inspection':'implementation')+' '+(index>=0?index+1:text);
+      }
       if(text.startsWith('/lang ') && !text.includes('\n')) {
         const lang=text.slice(6).trim();
         if(!(lang in texts)){ui.write('ja · en · zh-Hans · ko · es');return;}
@@ -77,11 +99,12 @@ export function remoteTerminal(term: Terminal, gateway: string, status: (value:s
         }
         return;
       }
+      if(text.startsWith('/')){ui.write(label().help);return;}
       if(!token){ui.write(label().login);return;}
-      if(!inspection||!implementation){ui.write(label().choose);return;}
+      if(!inspection||!implementation){ui.write(label().choose+'\n/model inspection 2\n/model implementation 1\n'+label().select+': inspection → implementation');return;}
       busy=true;ownsBusy=true;
-      const accepted=await api<{id:string;status:string}>('/v1/jobs','POST',{request:value,locale,inspection,implementation,key:crypto.randomUUID()});
-      job=accepted.id;ui.write(label().waiting);setStatus(label().waiting);
+      const accepted=await api<{id:string;status:string;compute?:{node:string;inspection:string;implementation:string}}>('/v1/jobs','POST',{request:value,locale,inspection,implementation,key:crypto.randomUUID()});
+      job=accepted.id;if(accepted.compute)ui.write(accepted.compute.node+' · inspection: '+accepted.compute.inspection+' / implementation: '+accepted.compute.implementation);ui.write(label().waiting);setStatus(label().waiting);
       let previous='';
       while(!closed){
         const result=await api<{status:string;result?:{answer?:string;error?:string;learning?:unknown[];reuse?:unknown[];proposed_files?:Record<string,string>}}>('/v1/jobs/'+encodeURIComponent(job));
@@ -105,9 +128,8 @@ export function remoteTerminal(term: Terminal, gateway: string, status: (value:s
     }catch(e){if(!closed){ui.write(label().failed+': '+String(e));setStatus(label().failed);}}
     finally{if(ownsBusy)busy=false;}
   }
-  ui.write(label().welcome+'\n'+label().help+'\n'+label().cap);
+  ui.write('Language / 言語を選択\n1 日本語\n2 English\n3 简体中文\n4 한국어\n5 Español\n1–5 → Enter');
   refreshFooter();setStatus(gateway?label().login:label().offline);
-  if(gateway)void catalog().catch(e=>ui.write(String(e)));
-  else ui.write(label().offline);
+
   return {input(data:string){ui.input(data);},resize(){ui.resize();},dispose(){closed=true;abort.abort();ui.dispose();}};
 }

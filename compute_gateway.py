@@ -15,7 +15,8 @@ import time
 from urllib.parse import urlsplit
 
 import certifi
-from aiohttp import web, ClientSession, ClientTimeout, TCPConnector
+from aiohttp import web, ClientSession, ClientTimeout, TCPConnector, ClientError
+from compute_routing import loopback_endpoint, small_pair
 from gateway_policy import Store, Refused, validate_pair, parameter_count, SPARK, LANGUAGES, digest
 
 ROOT=Path(__file__).resolve().parent
@@ -92,14 +93,17 @@ class Gateway:
         self.flows={}
         self.tasks=set()
         self.active={}
-        self.queue=asyncio.Queue()
         self.owner_token=secrets.token_urlsafe(32)
         self.owner_port=config.get("owner_port",8767)
         self.owner_url=f"http://127.0.0.1:{self.owner_port}/owner"
         self.model_cache=None
         self.model_time=0
         self.rate={}
-        self.worker_task=None
+        self.admission_lock=asyncio.Lock()
+        self.reservations={}
+        self.endpoints={'primary':loopback_endpoint(config.get('primary_ollama','http://127.0.0.1:11434'))}
+        if config.get('secondary_ollama'):
+            self.endpoints['backup-24GB']=loopback_endpoint(config['secondary_ollama'])
 
     def throttle(self, key, count=30, seconds=60):
         now=self.clock()
@@ -135,10 +139,10 @@ class Gateway:
         if not auth.startswith("Bearer "): raise Refused("LOGIN_REQUIRED")
         return self.store.identity(auth[7:])
 
-    async def inventory(self, force=False):
-        if not force and self.model_cache is not None and self.clock()-self.model_time<30: return self.model_cache
+    async def inventory(self, force=False, node="primary"):
+        if node=="primary" and not force and self.model_cache is not None and self.clock()-self.model_time<30: return self.model_cache
         try:
-            async with self.http.get("http://127.0.0.1:11434/api/tags") as response:
+            async with self.http.get(self.endpoints[node]+"/api/tags",timeout=ClientTimeout(total=3)) as response:
                 if response.status!=200: raise Refused("OLLAMA_UNAVAILABLE")
                 data=await response.json()
             models=[]
@@ -146,9 +150,9 @@ class Gateway:
                 name=item["name"]
                 if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}",name): continue
                 models.append({"name":name,"digest":item["digest"],"parameters":parameter_count(item.get("details",{})),"provider":"ollama"})
-            self.model_cache=models;self.model_time=self.clock()
+            if node=="primary": self.model_cache=models;self.model_time=self.clock()
             return models
-        except (OSError,asyncio.TimeoutError):
+        except (OSError,asyncio.TimeoutError,ClientError):
             raise Refused("OLLAMA_UNAVAILABLE") from None
 
     async def catalog(self,request):
@@ -197,18 +201,40 @@ class Gateway:
         who=self.identity(request);self.throttle(("submit",who["subject"]),10)
         body=await request.json()
         if set(body)!={"request","locale","inspection","implementation","key"}: raise Refused("INVALID_REQUEST")
-        pair=validate_pair(await self.inventory(),body["inspection"],body["implementation"],owner=who["subject"]==str(self.cfg["owner_github_id"]))
-        try: job=self.store.submit(who,{"request":body["request"],"locale":body["locale"],"pair":pair,"key":body["key"]})
-        except Refused as error:
-            if str(error)=="SPARK_DAILY_LIMIT": self.spawn(self.quota_notice())
-            raise
-        if job["status"]=="PENDING" and job["id"] not in self.active:
-            self.active[job["id"]]=None
-            await self.queue.put(job["id"])
-        return web.json_response(self.public_job(job),status=202)
+        async with self.admission_lock:
+            old=self.store.db.execute("SELECT id FROM jobs WHERE subject=? AND key=?",(who['subject'],body['key'])).fetchone()
+            if old:
+                job=self.store.get(old['id'],who['subject'])
+                saved=job['body']; requested=saved['pair'].get('requested_models',{})
+                if any(body[k]!=saved[k] for k in ('request','locale')) or any(body[r]!=requested.get(r,saved['pair'][r]['name']) for r in ('inspection','implementation')):
+                    raise Refused('REQUEST_CHANGED')
+                return web.json_response(self.public_job(job),status=202)
+            pair=validate_pair(await self.inventory(),body['inspection'],body['implementation'],owner=who['subject']==str(self.cfg['owner_github_id']))
+            node='primary'
+            if node in self.reservations:
+                node='backup-24GB'
+                if node not in self.endpoints or node in self.reservations: raise Refused('COMPUTE_BUSY')
+                try: pair=small_pair(await self.inventory(force=True,node=node))
+                except (Refused,ValueError,KeyError,TypeError): raise Refused('COMPUTE_BUSY') from None
+            pair['compute_node']=node
+            pair['requested_models']={r:body[r] for r in ('inspection','implementation')}
+            try: job=self.store.submit(who,{'request':body['request'],'locale':body['locale'],'pair':pair,'key':body['key']})
+            except Refused as error:
+                if str(error)=='SPARK_DAILY_LIMIT': self.spawn(self.quota_notice())
+                raise
+            self.reservations[node]=job['id']
+            task=self.spawn(self.run_job(job['id']))
+            self.active[job['id']]=task
+            def release(_):
+                if self.reservations.get(node)==job['id']: self.reservations.pop(node,None)
+                self.active.pop(job['id'],None)
+            task.add_done_callback(release)
+            return web.json_response(self.public_job(job),status=202)
 
     def public_job(self,job):
-        return {k:job[k] for k in ("id","status","result","expires")}
+        return {**{k:job[k] for k in ("id","status","result","expires")},'compute':{
+            'node':job['body']['pair'].get('compute_node','primary'),
+            **{r:job['body']['pair'][r]['name'] for r in ('inspection','implementation')}}}
     async def job_status(self,request):
         who=self.identity(request);return web.json_response(self.public_job(self.store.get(request.match_info["job"],who["subject"])))
     async def cancel(self,request):
@@ -221,7 +247,7 @@ class Gateway:
 
     async def approve_dialog(self,job):
         body=job["body"];pair=body["pair"]
-        message=f"利用者: GitHub ID {job['subject']}\n検査補助: {pair['inspection']['name']}\n実装案: {pair['implementation']['name']}\nローカル合計: {pair['total_parameters']/1e9:g}B / 40B\n\n{body['request'][:2000]}\n\nこの一件に計算資源を使用しますか？"
+        message=f"実行先: {pair.get('compute_node','primary')}\n利用者: GitHub ID {job['subject']}\n検査補助: {pair['inspection']['name']}\n実装案: {pair['implementation']['name']}\nローカル合計: {pair['total_parameters']/1e9:g}B / {10 if pair.get('compute_node')=='backup-24GB' else 40}B\n\n{body['request'][:2000]}\n\nこの一件に計算資源を使用しますか？"
         code,out,_=await bounded_process(script_args(APPROVAL_SCRIPT,message),timeout=310,limit=32768)
         return code==0 and out.decode().strip()=="allow"
 
@@ -237,7 +263,10 @@ class Gateway:
             self.store.approve(jobid,job["fingerprint"],approved)
             if not approved or self.store.get(jobid)["status"]!="APPROVED": return
             old=job["body"]["pair"]
-            current=validate_pair(await self.inventory(force=True),old["inspection"]["name"],old["implementation"]["name"],owner=job["subject"]==str(self.cfg["owner_github_id"]))
+            current=validate_pair(await self.inventory(force=True,node=old.get("compute_node","primary")),old["inspection"]["name"],old["implementation"]["name"],owner=job["subject"]==str(self.cfg["owner_github_id"]))
+            if old.get('compute_node')=='backup-24GB' and current['total_parameters']>10_000_000_000: raise Refused('PAIR_OVER_10B')
+            for key in ('compute_node','requested_models'):
+                if key in old: current[key]=old[key]
             self.store.claim(jobid,current)
             result=await self.execute(job)
             self.store.finish(jobid,"SUCCEEDED",result)
@@ -249,21 +278,15 @@ class Gateway:
             if str(error)=="SPARK_DAILY_LIMIT": self.spawn(self.quota_notice())
         except Exception:
             self.store.finish(jobid,"FAILED",{"error":"EXECUTION_FAILED"})
-        finally: self.active.pop(jobid,None)
+        finally:
+            self.active.pop(jobid,None)
+            node=job['body']['pair'].get('compute_node','primary')
+            if self.reservations.get(node)==jobid: self.reservations.pop(node,None)
 
-    async def worker(self):
-        while True:
-            job=await self.queue.get()
-            task=asyncio.create_task(self.run_job(job));self.active[job]=task
-            try: await task
-            except asyncio.CancelledError:
-                if asyncio.current_task().cancelling(): task.cancel();raise
-            finally: self.queue.task_done()
-
-    def adapter_profile(self, model):
+    def adapter_profile(self, model, node="primary"):
         if model["provider"]=="codex":
             return {"argv":[self.cfg.get("python","/usr/local/bin/python3"),str(ROOT/"spark_adapter.py")]}
-        return {"format":"verantyx.model-api.v1","provider":"ollama","model":model["name"],"endpoint":"http://127.0.0.1:11434/api/chat","key_env":None,
+        return {"format":"verantyx.model-api.v1","provider":"ollama","model":model["name"],"endpoint":self.endpoints[node]+"/api/chat","key_env":None,
                 "allow_loopback_http":True,"timeout":180,"max_output_tokens":32768,"max_response_bytes":262144,"thinking":False,"context_window":32768}
 
     async def execute(self,job):
@@ -279,7 +302,7 @@ class Gateway:
         for role in ("inspection","implementation"):
             model=job["body"]["pair"][role]
             target=project/(job["id"]+"-"+role+".json")
-            value=self.adapter_profile(model)
+            value=self.adapter_profile(model,job["body"]["pair"].get("compute_node","primary"))
             target.write_text(json.dumps(value));target.chmod(0o600);adapters.append(target)
         code,out,_=await bounded_process(base+["ask","--adapter",adapters[0],"--editor-adapter",adapters[1],"--proposal-only","--key",job["id"],"--timeout","180","--max-repairs","0","--",job["body"]["request"]],timeout=900)
         if code: raise Refused("VERANTYX_REQUEST_FAILED")
@@ -371,16 +394,13 @@ async def serve(config):
             for app,port in ((gateway.public_app(),config.get("port",8766)),(gateway.owner_app(),gateway.owner_port)):
                 runner=web.AppRunner(app,access_log=None);await runner.setup();runners.append(runner)
                 await web.TCPSite(runner,"127.0.0.1",port).start()
-            gateway.worker_task=asyncio.create_task(gateway.worker())
+            # Jobs reserve a physical compute slot atomically before they start.
             print("Verantyx: 公開用接続の準備完了。Mac側の実行承認を待ちます。",flush=True)
             print("管理画面: "+gateway.owner_url,flush=True)
             stop=asyncio.Event()
             for sig in (signal.SIGINT,signal.SIGTERM): asyncio.get_running_loop().add_signal_handler(sig,stop.set)
             await stop.wait()
         finally:
-            if gateway.worker_task:
-                gateway.worker_task.cancel()
-                with contextlib.suppress(asyncio.CancelledError): await gateway.worker_task
             for task in gateway.tasks: task.cancel()
             if gateway.tasks: await asyncio.gather(*gateway.tasks,return_exceptions=True)
             for runner in runners: await runner.cleanup()

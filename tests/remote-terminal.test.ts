@@ -29,9 +29,10 @@ void test('public terminal selects installed models, rejects over 40B and submit
   const settle=async()=>{for(let i=0;i<12;i++){await new Promise(resolve=>setTimeout(resolve,1));await new Promise<void>(resolve=>term.write('',resolve));}};
   const screen=()=>Array.from({length:term.buffer.active.length},(_,i)=>term.buffer.active.getLine(i)?.translateToString(true)??'').join('\n');
   try {
-    await settle();remote.input('/model inspection 2\r/model implementation 3\r');await settle();
+    await settle();assert.match(screen(),/Language/);assert.doesNotMatch(screen(),/second-large/);remote.input('1\r');await settle();remote.input('2\r3\r');await settle();
     assert.match(screen(),/40B limit/);
     remote.input('/model implementation 4\r');await settle();assert.match(screen(),/選択不可/);
+    remote.input('verantyx setup\r');await settle();assert.equal(requests.length,0);
     remote.input('/model inspection 1\r/model implementation 2\r/lang en\r');await settle();
     assert.match(screen(),/GitHub sign-in/);
     remote.input('/login\r');await settle();
