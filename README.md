@@ -53,7 +53,9 @@ Sparkの個人サブスク接続は所有者本人のみです。[公式のPro�
 予備MacにはOllamaと、合計10B以下になる異なる2モデルが必要です。主Macで`Open-Backup-Mac.command`を開き、SSHの接続先と必要なパスワードをターミナルに入力します。Ollamaは予備Macのloopbackで動かし、SSHで主Macの`127.0.0.1:11435`へ転送します。ゲートウェイのローカル設定に以下を追加して再起動してください。予備Macのアドレスやパスワードを公開設定へ書く必要はありません。
 
 ```json
-{"secondary_ollama":"http://127.0.0.1:11435"}
+{"secondary_ollama":"http://127.0.0.1:11435","secondary_models":["qwen3.5:2b","qwen2.5:3b"]}
 ```
 
 接続中はSSHのターミナルを開いたままにします。Mac側の24GBという容量だけからモデルサイズを推測せず、Ollamaのパラメータ数を使って上限を判定します。実メモリ使用量を10GB以下に保証する制限ではありません。
+
+主Macにこの2モデルがある場合は、SSH接続後に`.venv/bin/python scripts/copy-backup-models.py`でモデル本体を直接転送できます。重みのSHA-256を検証し、テンプレート・パラメータ・ライセンス・renderer/parserを引き継ぎます。モデルはGitへ追加しません。

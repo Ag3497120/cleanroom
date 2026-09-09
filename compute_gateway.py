@@ -214,7 +214,11 @@ class Gateway:
             if node in self.reservations:
                 node='backup-24GB'
                 if node not in self.endpoints or node in self.reservations: raise Refused('COMPUTE_BUSY')
-                try: pair=small_pair(await self.inventory(force=True,node=node))
+                try:
+                    available=await self.inventory(force=True,node=node)
+                    if self.cfg.get('secondary_models'):
+                        available=[m for m in available if m['name'] in self.cfg['secondary_models']]
+                    pair=small_pair(available)
                 except (Refused,ValueError,KeyError,TypeError): raise Refused('COMPUTE_BUSY') from None
             pair['compute_node']=node
             pair['requested_models']={r:body[r] for r in ('inspection','implementation')}
