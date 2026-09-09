@@ -51,3 +51,4 @@ next-env.d.ts
 /core/validation/results.json
 /execution/state/
 /dependencies/
+/core/src/verantyx/cross-build.json

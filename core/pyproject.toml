@@ -17,4 +17,4 @@ verantyx = "verantyx.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-verantyx = ["locales/*.json", "schemas/*.json", "policies/*.cross"]
+verantyx = ["locales/*.json", "schemas/*.json", "policies/*.cross", "cross-build.json"]

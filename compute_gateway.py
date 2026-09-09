@@ -10,10 +10,12 @@ from pathlib import Path
 import re
 import secrets
 import signal
+import ssl
 import time
 from urllib.parse import urlsplit
 
-from aiohttp import web, ClientSession, ClientTimeout
+import certifi
+from aiohttp import web, ClientSession, ClientTimeout, TCPConnector
 from gateway_policy import Store, Refused, validate_pair, parameter_count, SPARK, LANGUAGES, digest
 
 ROOT=Path(__file__).resolve().parent
@@ -361,7 +363,8 @@ document.querySelector('#local').onclick=()=>change({mode:'local'});document.que
 
 async def serve(config):
     gateway=Gateway(config)
-    async with ClientSession(timeout=ClientTimeout(total=15)) as client:
+    tls=ssl.create_default_context(cafile=certifi.where())
+    async with ClientSession(timeout=ClientTimeout(total=15),connector=TCPConnector(ssl=tls)) as client:
         gateway.http=client
         runners=[]
         try:

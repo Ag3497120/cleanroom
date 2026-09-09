@@ -9,6 +9,7 @@ python3 -m venv .venv
 .venv/bin/python -m pip install -e ./core -r requirements.txt
 cmake -S cross -B cross/build -DCMAKE_BUILD_TYPE=Release
 cmake --build cross/build -j 2
+.venv/bin/python scripts/pin-cross-runtime.py
 .venv/bin/verantyx --help
 ```
 

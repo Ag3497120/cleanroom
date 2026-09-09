@@ -9,6 +9,9 @@ if [[ ! -x cross/build/cross ]]; then
   cmake -S cross -B cross/build -DCMAKE_BUILD_TYPE=Release
   cmake --build cross/build -j 2
 fi
+if [[ ! -f core/src/verantyx/cross-build.json ]]; then
+  .venv/bin/python scripts/pin-cross-runtime.py
+fi
 if [[ ! -f .gateway/config.json ]]; then
   .venv/bin/python scripts/configure-gateway.py
 fi

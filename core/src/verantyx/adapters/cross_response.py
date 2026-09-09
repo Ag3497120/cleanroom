@@ -7,6 +7,7 @@ from copy import deepcopy
 from importlib.resources import files
 from pathlib import Path
 import hashlib
+import json
 import os
 import subprocess
 import tempfile
@@ -26,6 +27,14 @@ EXPECTED_IDENTITY = {
     "program_sha256": "3b2a20c870a656ada3f15c7a943dda7a88b4026409413f1ae569d0c9f49160ac",
     "meaning_sha256": "cffbd2be864ca96a719ef0efeb28a0b29cac1bd578b9ac18fefd6862efcea36c",
 }
+# A trusted local build registers its exact binary after the Cross tests pass.
+# The file is installation metadata, never model input or a request option.
+_build_pin = Path(__file__).resolve().parents[1] / "cross-build.json"
+if _build_pin.is_file():
+    _pin = json.loads(_build_pin.read_text())
+    if set(_pin) != {"runtime_sha256"} or not isinstance(_pin["runtime_sha256"], str) or len(_pin["runtime_sha256"]) != 64 or any(c not in "0123456789abcdef" for c in _pin["runtime_sha256"]):
+        raise RuntimeError("Invalid Cross build identity")
+    EXPECTED_IDENTITY["runtime_sha256"] = _pin["runtime_sha256"]
 FACE_KEYS = dict(zip(INPUT_KEYS, ("+x/面/北", "-x/面/北", "+y/面/北", "-y/面/北", "+z/面/北", "-z/面/北")))
 
 
@@ -85,7 +94,7 @@ def _configured_binary(binary):
     configured = binary if binary is not None else os.environ.get("VERANTYX_CROSS")
     if configured is None:
         project = Path(__file__).resolve().parents[3]
-        candidate = project.parents[2] / "co/outputs/cross-language-0.5/bin/cross"
+        candidate = project.parent / "cross/build/cross"
         configured = candidate if candidate.is_file() else None
     if configured is None:
         raise LedgerError("CROSS_UNAVAILABLE")
