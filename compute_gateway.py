@@ -17,7 +17,7 @@ from aiohttp import web, ClientSession, ClientTimeout
 from gateway_policy import Store, Refused, validate_pair, parameter_count, SPARK, LANGUAGES, digest
 
 ROOT=Path(__file__).resolve().parent
-CANON=Path(os.environ.get('VERANTYX_HOME',str(ROOT.parent))).expanduser().resolve()
+CANON=Path(os.environ.get('VERANTYX_HOME',str(ROOT/'core'))).expanduser().resolve()
 def script_args(script, *args):
     return ["/usr/bin/osascript","-e",script,"--",*map(str,args)]
 

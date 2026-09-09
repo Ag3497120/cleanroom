@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import re
+import sys
 from urllib.parse import urlsplit
 
 root=Path(__file__).resolve().parents[1]
@@ -27,7 +28,7 @@ for key in ("site_url","gateway_url"):
     if key=="gateway_url" and url.path not in ("","/"): raise SystemExit("Mac接続URLはパスなしで指定してください。")
 if not re.fullmatch(r"[0-9]{1,20}",config["owner_github_id"]):raise SystemExit("GitHub数値IDを確認してください。")
 config["notify_email"]=input(f"上限通知メール（空欄ならメールなし） [{config.get('notify_email','')}]: ").strip() or config.get('notify_email','')
-config.update(state_dir=str(directory/"state"),port=8766,owner_port=8767,python="/usr/local/bin/python3")
+config.update(state_dir=str(directory/"state"),port=8766,owner_port=8767,python=sys.executable)
 fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_TRUNC,0o600)
 with os.fdopen(fd,'w') as out:json.dump(config,out,ensure_ascii=False,indent=2)
 path.chmod(0o600)

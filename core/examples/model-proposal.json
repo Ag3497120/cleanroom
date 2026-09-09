@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "task_id": "example-task-001",
+  "context_revision": 0,
+  "response_locale": "ja",
+  "summary": "既存のプロジェクト情報を調べる提案。まだ検証結果や実行許可はない。",
+  "claims": [],
+  "actions": [
+    {
+      "id": "proposed-observation-001",
+      "tool_id": "repository.inspect",
+      "arguments": {"include_untracked_names": true},
+      "reason": "対象と作業状態を確認してから変更候補を作るため。",
+      "source_refs": []
+    }
+  ],
+  "unknowns": [
+    {
+      "id": "unknown-001",
+      "question": "どの成功基準がこのプロジェクトで既に採用されているか。",
+      "needed_observation": "プロジェクトの目的、既存の判断、関連する検査手順。"
+    }
+  ]
+}

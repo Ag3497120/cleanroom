@@ -1,0 +1,165 @@
+"""Pure replay: recorded time in, reconstructed state out; no external effects."""
+from copy import deepcopy
+
+from ..domain.codec import digest
+from ..domain.events import citation, require, validate_event, ZERO_HASH
+from .evaluate import evaluate
+from .rights import read_rights
+
+MAX_STREAM_EVENTS = 10000
+
+
+def _apply(state, event):
+    validate_event(event)
+    payload = event["payload"]
+    if state is None:
+        require(event["type"] == "TaskRequested" and event["revision"] == 1, "STORE_INTEGRITY")
+        state = {"schema_version": 1, "project_id": event["project_id"], "run_id": event["stream_id"],
+                 "request": payload["request"], "locale": payload["locale"], "request_ref": citation(event),
+                 "revision": 0, "head_hash": ZERO_HASH, "last_event_id": None,
+                 "last_command_id": None, "command_start_revision": 0,
+                 "read_scope": [], "read_grants": [], "observations": {}, "latest_observations": {},
+                 "proposal": None, "proposal_ref": None, "assessment": None, "evaluated_at": None,
+                 "context": deepcopy(payload["context"]), "learning_preferences": deepcopy(payload["learning"]),
+                 "policy_context": None, "human_decisions": {}, "growth_triggers": [], "rule_event_refs": [], "effects": {}, "local_rule_concepts": {}, "workspace_observations": []}
+    else:
+        require(event["type"] != "TaskRequested", "STORE_INTEGRITY")
+    require(event["project_id"] == state["project_id"] and event["stream_id"] == state["run_id"], "STORE_INTEGRITY")
+    require(event["revision"] == state["revision"] + 1 and event["prev_hash"] == state["head_hash"], "STORE_INTEGRITY")
+    require(event["causation_id"] == state["last_event_id"], "STORE_INTEGRITY")
+    if event["command_id"] != state["last_command_id"]:
+        state["command_start_revision"] = state["revision"]
+    kind = event["type"]
+    from ..domain.effects import validate_binding
+    validate_binding(state, event)
+    from ..domain.asset_workflow import apply_event as apply_workflow
+    apply_workflow(state, event)
+    from ..external_capture import apply_event as apply_capture
+    apply_capture(state, event)
+    from ..shared_context import apply_event as apply_context
+    apply_context(state, event)
+    from ..responses import apply_event as apply_response
+    apply_response(state, event)
+    from ..learning import apply_event as apply_learning
+    apply_learning(state, event)
+    from ..domain.adoption import apply_event as apply_adoption
+    apply_adoption(state, event)
+    from ..domain.verification import apply_event as apply_verification
+    apply_verification(state, event)
+    from ..domain.integration import apply_event as apply_integration
+    apply_integration(state, event)
+    from ..domain.oracles import apply_event as apply_oracle
+    apply_oracle(state, event)
+    from ..domain.command_effects import apply_event as apply_command
+    apply_command(state, event)
+    if kind in ("TaskRequested", "ReadScopeExtended"):
+        granted = payload["read_scope"] if kind == "TaskRequested" else payload["paths"]
+        state["read_scope"] = sorted(set(state["read_scope"]) | set(granted))
+        require(len(state["read_scope"]) <= 32)
+        if granted:
+            state["read_grants"].append({"source_ref": citation(event), "paths": list(granted)})
+    elif kind == "ObservationRecorded":
+        require(payload["path"] in state["read_scope"], "STORE_INTEGRITY")
+        state["observations"][citation(event)] = deepcopy(payload)
+        state["latest_observations"][payload["path"]] = citation(event)
+    elif kind == "ProposalRecorded":
+        document = payload["document"]
+        require(document["task_id"] == state["run_id"], "STORE_INTEGRITY")
+        require(payload["basis_revision"] == state["command_start_revision"], "STORE_INTEGRITY")
+        state["proposal"] = deepcopy(document)
+        state["proposal_ref"] = citation(event)
+    elif kind == "EvaluationRecorded":
+        state["assessment"] = evaluate(state, payload["as_of"])
+        state["evaluated_at"] = payload["as_of"]
+        from ..growth import deltas
+        state["deltas"] = deltas(state)
+    elif kind == "PolicyContextRecorded":
+        from .rules import validate_context
+        from ..domain.rule_extensions import audit_rows
+        validate_context(state, payload)
+        state.setdefault("rule_observations", []).extend(audit_rows(state, payload, citation(event), event["recorded_at"]))
+        state["policy_context"] = deepcopy(payload)
+    elif kind == "HumanDecisionRecorded":
+        require(payload["scope"]["project_id"] == state["project_id"])
+        from ..domain.rule_extensions import options_contract
+        point = next((point for point in (state["proposal"] or {}).get("decision_points", []) if point["id"] == payload["point_id"]), None)
+        if point:
+            require(point["kind"] == "VALUE_DECISION" and payload["scope"] == {"project_id": state["project_id"],
+                    **state["context"], "decision_type": point["decision_type"]}, "STORE_INTEGRITY")
+            options = point["options"]
+        else:
+            options = state.get("local_rule_options", {}).get(payload["point_id"])
+        if options is not None:
+            require(payload["choice"] in {option["id"] for option in options}, "STORE_INTEGRITY")
+        state["human_decisions"][payload["point_id"]] = {**deepcopy(payload), "source_ref": citation(event),
+                                                       "options_hash": options_contract(options) if options is not None else None,
+                                                       "binding": "OPTIONS_CONTRACT" if options is not None else "UNBOUND_HISTORY"}
+        state["growth_triggers"].append({"kind": "HighImpactDecision", "concept": payload["scope"]["decision_type"],
+                                         "source_ref": citation(event)})
+    elif kind == "WorkspaceObserved":
+        state["workspace_observations"].append({**deepcopy(payload), "source_ref": citation(event)})
+    elif kind == "EffectAuthorized":
+        lease = deepcopy(payload["lease"])
+        require(lease["id"] not in state["effects"] and lease["proposal_hash"] == digest(state["proposal"]))
+        require(lease["basis_revision"] == state["command_start_revision"])
+        require(state["workspace_observations"] and digest(state["workspace_observations"][-1]["workspace"]) == lease["precondition_hash"])
+        state["effects"][lease["id"]] = {"status": "AUTHORIZED", "lease": lease, "source_ref": citation(event),
+                                         "authorization_command": event["command_id"]}
+    elif kind in ("ExecutionStarted", "AuthorizationInvalidated", "ExecutionReceipt"):
+        item = state["effects"].get(payload["lease_id"])
+        require(item is not None)
+        if kind == "ExecutionStarted":
+            require(item["status"] == "AUTHORIZED")
+            item.update(status="STARTED", started_ref=citation(event))
+        elif kind == "AuthorizationInvalidated":
+            require(item["status"] == "AUTHORIZED")
+            item.update(status="INVALIDATED", reason=payload["reason"], invalidated_ref=citation(event))
+        else:
+            require(item["status"] == "STARTED")
+            from ..domain.effects import project_receipt
+            receipt, annotation = project_receipt(payload)
+            item.update(status=payload["outcome"], receipt=receipt, receipt_ref=citation(event))
+            if annotation is not None:
+                item["verification_annotation"] = {**annotation, "source_ref": citation(event)}
+            state["growth_triggers"].append({"kind": "ExecutionBoundary", "concept": "parallel_writers", "source_ref": citation(event)})
+    elif kind.startswith("Rule"):
+        state["rule_event_refs"].append(citation(event))
+        if kind == "RuleCandidateCreated":
+            state["local_rule_concepts"][payload["rule"]["id"]] = payload["rule"]["decision_type"]
+            state.setdefault("local_rule_options", {})[payload["rule"]["id"]] = deepcopy(payload["rule"]["options"])
+        if kind == "RuleActivated":
+            state["growth_triggers"].append({"kind": "RulePromoted", "concept": state["local_rule_concepts"].get(payload["rule_id"], "scoped_rule"),
+                                             "source_ref": citation(event)})
+    from ..assets import capture_event
+    capture_event(state, event)
+    if kind != "EvaluationRecorded":
+        # A changed context never retains a previous verdict as current.
+        state["assessment"] = None
+        state["evaluated_at"] = None
+    state.update(revision=event["revision"], head_hash=event["event_hash"],
+                 last_event_id=event["event_id"], last_command_id=event["command_id"])
+    return state
+
+
+def reduce_event(state, event):
+    return _apply(deepcopy(state), event)
+
+
+def replay(events):
+    state = None
+    for count, event in enumerate(events, 1):
+        require(count <= MAX_STREAM_EVENTS, "DOCUMENT_LIMIT")
+        state = _apply(state, event)
+    return state
+
+
+def projection(state, trusted=True):
+    if state is None:
+        return None
+    value = deepcopy(state)
+    value["rights"] = read_rights(state, trusted=trusted)
+    value["replay_only"] = True
+    value["historical_assessment"] = True
+    value["can_execute_effects"] = False
+    value["trust"] = "LOCAL_HISTORY" if trusted else "ARCHIVE_ONLY"
+    return {"state": value, "projection_hash": digest(value)}

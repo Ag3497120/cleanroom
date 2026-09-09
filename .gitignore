@@ -42,3 +42,12 @@ next-env.d.ts
 /validation/private/
 *.tsbuildinfo
 /.gateway/
+**/__pycache__/
+**/*.egg-info/
+/cross/build/
+/core/build/
+/core/dist/
+/core/validation/test-output.txt
+/core/validation/results.json
+/execution/state/
+/dependencies/

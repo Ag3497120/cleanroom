@@ -1,0 +1,194 @@
+{
+  "provenance": "Actual Ollama output from artificial probe 13; identical labels concealed missing case coverage. No real human decisions.",
+  "packet": {
+    "format": "verantyx.shared-context.v1",
+    "parent": null,
+    "project_id": "4704dbfa-f5ae-474e-98d5-f67ad47e991d",
+    "scope": {
+      "component": "calculator",
+      "risk": "LOW",
+      "workload": "artificial-model-probe"
+    },
+    "sha256": "c5c3915a3f971853a09fad5165f78dd6b592a0db5818d1c4453a42a3df981db2",
+    "sources": [
+      {
+        "id": "4704dbfa-f5ae-474e-98d5-f67ad47e991d:8b271683-f94e-44a7-b3ac-168e367aa701",
+        "kind": "USER_REQUEST",
+        "run_id": "real-model-check",
+        "sha256": "83909bdca6a558613c45e592ec638f1cf7a94bedb47054a056db49854946129e",
+        "source_ref": "4704dbfa-f5ae-474e-98d5-f67ad47e991d:8b271683-f94e-44a7-b3ac-168e367aa701",
+        "text": "calc.py の answer() が整数の2を返すように修正してください。test_calc.py は独立した既存テストとして変更しないでください。今回は連携の動作確認を先に行い、厳密なモデル非依存化は後で実装する予定として残してください。"
+      }
+    ]
+  },
+  "plan": {
+    "cases": [
+      {
+        "choices": [
+          {
+            "id": "choice-A",
+            "text": "answer() を整数 2 に変更し、test_calc.py を保持する"
+          },
+          {
+            "id": "choice-B",
+            "text": "answer() を整数 2 に変更せず、test_calc.py を更新して連携動作を確認する"
+          }
+        ],
+        "expected": "choice-A",
+        "id": "case-1",
+        "interpretation_ids": [
+          "intent-1",
+          "intent-2"
+        ],
+        "situation": "calc.py の answer() を整数 2 に変更し、test_calc.py は保持する。"
+      },
+      {
+        "choices": [
+          {
+            "id": "choice-A",
+            "text": "answer() を整数 2 に変更し、test_calc.py を保持する"
+          },
+          {
+            "id": "choice-B",
+            "text": "answer() を整数 2 に変更せず、test_calc.py を更新して連携動作を確認する"
+          }
+        ],
+        "expected": "choice-A",
+        "id": "case-2",
+        "interpretation_ids": [
+          "intent-1",
+          "intent-2"
+        ],
+        "situation": "calc.py の answer() を整数 2 に変更し、test_calc.py は保持する。"
+      },
+      {
+        "choices": [
+          {
+            "id": "choice-A",
+            "text": "answer() を整数 2 に変更し、test_calc.py を保持する"
+          },
+          {
+            "id": "choice-B",
+            "text": "answer() を整数 2 に変更せず、test_calc.py を更新して連携動作を確認する"
+          }
+        ],
+        "expected": "choice-A",
+        "id": "case-3",
+        "interpretation_ids": [
+          "intent-1",
+          "intent-2"
+        ],
+        "situation": "calc.py の answer() を整数 2 に変更し、test_calc.py は保持する。"
+      }
+    ],
+    "context_sha256": "c5c3915a3f971853a09fad5165f78dd6b592a0db5818d1c4453a42a3df981db2",
+    "interpretations": [
+      {
+        "alternatives": [],
+        "disposition": "NOW",
+        "id": "intent-1",
+        "meaning": "calc.py 関数内の answer() を定義し、その戻り値を整数 2 に変更する。",
+        "quote": "calc.py の answer() が整数の2を返すように修正してください。",
+        "source_id": "4704dbfa-f5ae-474e-98d5-f67ad47e991d:8b271683-f94e-44a7-b3ac-168e367aa701",
+        "strength": "MUST"
+      },
+      {
+        "alternatives": [],
+        "disposition": "NOW",
+        "id": "intent-2",
+        "meaning": "test_calc.py には、calc.py の変更を反映させるための既存のテストを保持し、追加の変更を行わない。",
+        "quote": "test_calc.py は独立した既存テストとして変更しないでください。",
+        "source_id": "4704dbfa-f5ae-474e-98d5-f67ad47e991d:8b271683-f94e-44a7-b3ac-168e367aa701",
+        "strength": "MUST"
+      },
+      {
+        "alternatives": [
+          "calc.py の変更を実行して、test_calc.py を更新する",
+          "test_calc.py の既存テストを保持し、calc.py の変更後に連携動作を確認する"
+        ],
+        "disposition": "DEFERRED",
+        "id": "intent-3",
+        "meaning": "まず、calc.py と test_calc.py の間の連携動作を確認する。",
+        "quote": "今回は連携の動作確認を先に行い、",
+        "source_id": "4704dbfa-f5ae-474e-98d5-f67ad47e991d:8b271683-f94e-44a7-b3ac-168e367aa701",
+        "strength": "SHOULD"
+      },
+      {
+        "alternatives": [
+          "連携動作確認後に、厳密なモデル非依存化を実行する"
+        ],
+        "disposition": "DEFERRED",
+        "id": "intent-4",
+        "meaning": "calc.py と test_calc.py の間の連携動作確認を完了した後、厳密なモデル非依存化を実装する。",
+        "quote": "厳密なモデル非依存化は後で実装する予定として残してください。",
+        "source_id": "4704dbfa-f5ae-474e-98d5-f67ad47e991d:8b271683-f94e-44a7-b3ac-168e367aa701",
+        "strength": "SHOULD"
+      }
+    ],
+    "relations": []
+  },
+  "editor": {
+    "acknowledgements": [
+      {
+        "alternatives": [],
+        "disposition": "NOW",
+        "id": "intent-1",
+        "interpretation": "calc.py の answer() 関数の戻り値を整数の 2 に変更します。",
+        "strength": "MUST"
+      },
+      {
+        "alternatives": [],
+        "disposition": "NOW",
+        "id": "intent-2",
+        "interpretation": "test_calc.py は既存のテストファイルとして保持し、内容を変更しません。",
+        "strength": "MUST"
+      },
+      {
+        "alternatives": [
+          "calc.py の変更を実行して、test_calc.py を更新する",
+          "test_calc.py の既存テストを保持し、calc.py の変更後に連携動作を確認する"
+        ],
+        "disposition": "DEFERRED",
+        "id": "intent-3",
+        "interpretation": "calc.py と test_calc.py の連携動作を確認するプロセスを保留します。",
+        "strength": "SHOULD"
+      },
+      {
+        "alternatives": [
+          "連携動作確認後に、厳密なモデル非依存化を実行する"
+        ],
+        "disposition": "DEFERRED",
+        "id": "intent-4",
+        "interpretation": "厳密なモデル非依存化の実装を保留します。",
+        "strength": "SHOULD"
+      }
+    ],
+    "case_choices": [
+      {
+        "choice": "choice-A",
+        "id": "case-1",
+        "reason": "calc.py の answer() を整数 2 に変更し、test_calc.py は保持する"
+      },
+      {
+        "choice": "choice-A",
+        "id": "case-2",
+        "reason": "calc.py の answer() を整数 2 に変更し、test_calc.py は保持する"
+      },
+      {
+        "choice": "choice-A",
+        "id": "case-3",
+        "reason": "calc.py の answer() を整数 2 に変更し、test_calc.py は保持する"
+      }
+    ],
+    "context_sha256": "c5c3915a3f971853a09fad5165f78dd6b592a0db5818d1c4453a42a3df981db2",
+    "files": {
+      "calc.py": "def answer():\n    return 2\n"
+    },
+    "notes": "calc.py の answer() 関数を修正し、整数の 2 を返すように変更します。test_calc.py は既存のテストとして保持し、連携動作確認のみを行います。厳密なモデル非依存化は後で実装する予定です。",
+    "plan_sha256": "760bfd4139735614ff25896cf8675f1004f3b6933148080ccf7bfbf4003ad8a9",
+    "relations": [],
+    "tests": [
+      "test_calc.py"
+    ]
+  }
+}
