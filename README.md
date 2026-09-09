@@ -1,6 +1,6 @@
 # mk-verantyx
 
-CLI型のWeb画面。依頼、実装案、再利用できる判断、任意の学習項目を扱うVerantyxへの接続画面です。
+AIとの仕事を、自分に残る判断と学びへ変える開発基盤。CLI型のWeb画面、本体の判断・検証・学習辞書、立体十字実行器を収録しています。
 
 公開ページ: https://ag3497120.github.io/mk-verantyx/
 
@@ -18,7 +18,7 @@ CLI型のWeb画面。依頼、実装案、再利用できる判断、任意の�
 
 ## 現在の公開状態
 
-画面とMacのHTTPS通信経路を接続し、実際に導入済みのモデルを取得できます。GitHubログイン用アプリの登録は未完了のため、依頼の実行はまだ停止しています。現在の接続は試用用Cloudflare Quick Tunnelで、再起動するとURLが変わります。
+画面とMacのHTTPS通信経路を接続し、実際に導入済みのモデルを取得できます。GitHubログイン用アプリを登録し、公開HTTPS経由の本人認証とモデル一覧取得を確認しました。依頼はMac所有者が許可してから処理します。実モデルでの依頼完了はまだ検証していません。現在の接続は試用用Cloudflare Quick Tunnelで、再起動するとURLが変わります。
 
 `/lang ja|en|zh-Hans|ko|es` で表示言語、接続後は `/models` と `/model inspection 番号`・`/model implementation 番号` で担当モデルを選択します。Enter送信、Ctrl+J改行、上下キーで履歴、Tab補完、複数行貼付に対応します。
 

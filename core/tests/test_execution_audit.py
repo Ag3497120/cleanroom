@@ -76,4 +76,3 @@ class ExecutionAuditTests(Fixture):
         self.assertFalse(result["execution"]["receipt"]["verification"]["result"]["passed"])
         codes = {gap["code"] for gap in result["state"]["assessment"]["gaps"]}
         self.assertIn("CANDIDATE_TEST_FAILED", codes)
-
