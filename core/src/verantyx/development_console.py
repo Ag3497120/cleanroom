@@ -79,34 +79,40 @@ def _friendly_status(status):
 
 
 def show_result(root, result):
-    print("\n--- 今日の記録 ------------------------------------------------")
-    print("ノートに書いたこと: " + result.get("request", result.get("run_id", "")))
-    print("いまの状態: " + _friendly_status(result.get("status", "UNKNOWN")))
+    from .cleanroom_notebook import render_work_receipt
+    print("\n╭─ WORK NOTE ─────────────────────────────────────────────────")
+    print("│ " + result.get("request", result.get("run_id", "This work")))
+    print("│ State: " + _friendly_status(result.get("status", "UNKNOWN")))
+    print("╰─────────────────────────────────────────────────────────────")
     gate = result.get("task_gate")
-    print("\n[ Cleanroom / あなたのプロジェクト ]")
+    print("\nPROJECT DELTA")
     if result.get("artifact_directory"):
-        print("AIの候補帳: " + str(Path(root) / result["artifact_directory"]))
-        print("本体: 変更していません。採用はあなたが決めます。")
+        print("候補ノート: " + str(Path(root) / result["artifact_directory"]))
+        print("本体プロジェクト: 未変更。採用はあなたが決めます。")
     else:
-        print("本体: 今回もCleanroomの外からは変更していません")
-    print("\n[ 作業帳 / Veraが残したもの ]")
+        print("本体プロジェクト: 今回もCleanroomの外からは変更していません")
+    print("\nSYSTEM DELTA")
     if result.get("judgment_run"):
         print("次回も使える検査: " + result["judgment_run"])
     else:
         print("判断、仮定、検証方法、失敗候補を作業帳へ保存しました")
-    print("\n[ あなたへの付箋 ]")
+    print("\nHUMAN DELTA")
     if isinstance(gate, dict) and gate.get("human_assumption"):
         print("今回あなたが決めたこと: " + str(gate["human_assumption"]))
     for item in result.get("learning_proposals", [])[:2]:
         if item.get("concept"):
-            print("後から見直せる理解: " + item["concept"])
+            print("回収する価値がある理解: " + item["concept"])
     if not result.get("learning_proposals"):
-        print("学習候補: 今回は付箋を増やしませんでした")
+        print("学習候補: 今回は新しい付箋を増やしませんでした")
+    print("\nEVIDENCE & UNKNOWN")
     if result.get("next_action"):
         print("確認したいこと: " + result["next_action"])
     elif result.get("reason"):
         print("確認が必要な点: " + result["reason"])
-    print("続きは「これまでの仕事を見る」とノートに書けば開けます。")
+    else:
+        print("この作業の証拠と未解決点は、作業ノートに分けて残しています。")
+    render_work_receipt(root, result)
+    print("続きは「今の仕事を見せて」または「確認が必要なことを見る」と書けば開けます。")
 
 
 _CONTEXT_FILENAMES = {
@@ -157,14 +163,8 @@ def _context_files(root, limit=8):
 
 
 def _show_start_plan(context_files, preflight, previous=None):
-    print("\n--- 作業前のメモ ----------------------------------------------")
-    print("Cleanroom: 本体はあなたが採用するまで変えません")
-    print("AIの作業帳: 現在の構成を読み、候補と検査記録を作ります")
-    print("あなたへの付箋: " + ("今回の前提を一つ確認します" if preflight.get("question") else "必要になったときだけ判断を返します"))
-    print("送信する範囲: プロジェクト内の関連ファイル " + str(len(context_files)) + "件")
-    print("送信しないもの: プロジェクト外、秘密情報候補、既存の作業帳")
-    if previous:
-        print("前の頁から続ける: " + previous["label"])
+    from .cleanroom_notebook import render_task_workspace
+    render_task_workspace(context_files, preflight, previous)
 
 
 def _confirm_context(context_files):
@@ -655,18 +655,8 @@ def _model_settings(root, configuration):
 
 
 def _notebook_index():
-    print("\n--- ノートの索引 ----------------------------------------------")
-    print("コマンドを覚える必要はありません。次の言葉を、そのままノートに書けます。")
-    print("  これまでの仕事を見る     過去の候補と続きを開く")
-    print("  学習ノートを開く         後から身につける理解と委譲を開く")
-    print("  残した資産を見る         判断、検査、失敗事例を読む")
-    print("  判断と証拠を見る         人間の判断、AIの仮定、UNKNOWNを確認する")
-    print("  モデルを設定する         Open Cleanroom Settings and choose providers")
-    print("  送信範囲を見る           次の作業でAIに渡るファイルを確認する")
-    print("  設定を見る               Cleanroomの通常設定を確認する")
-    print("  ローカル要約を作る       今回までの記録をまとめる")
-    print("  終了                     ノートを閉じる")
-    print("? でもこの索引を開けます。")
+    from .cleanroom_notebook import render_notebook_index
+    render_notebook_index()
 
 
 def _notebook_intent(value):
@@ -690,8 +680,25 @@ def _notebook_intent(value):
         "モデルを見る": "models",
         "設定を見る": "settings",
         "設定を確認する": "settings",
+        "設定を開く": "settings",
+        "モデル接続を変える": "models",
         "ローカル要約を作る": "export",
         "要約を作る": "export",
+        "project": "project",
+        "プロジェクト": "project",
+        "今のプロジェクト": "project",
+        "今のプロジェクトを見せて": "project",
+        "プロジェクトを理解したい": "project",
+        "review": "review",
+        "レビュー": "review",
+        "確認が必要なことを見る": "review",
+        "レビューを開く": "review",
+        "notebook": "notebook",
+        "ノート": "notebook",
+        "ノートを見る": "notebook",
+        "記録を見る": "notebook",
+        "今の仕事": "history",
+        "今の仕事を見せて": "history",
         "操作一覧": "index",
         "使い方": "index",
         "?": "index",
@@ -719,7 +726,15 @@ def _notebook_intent(value):
 def _notebook_action(root, configuration, mode, action):
     if action == "quit":
         return True
-    if action == "index":
+    if action == "project":
+        from .cleanroom_notebook import render_project_map
+        render_project_map(root, configuration, _context_files(root))
+    elif action == "review":
+        from .cleanroom_notebook import render_review_queue
+        render_review_queue(root, configuration)
+    elif action == "notebook":
+        _work_detail(root, configuration, mode)
+    elif action == "index":
         _notebook_index()
     elif action == "history":
         _work_detail(root, configuration, mode)
@@ -762,20 +777,13 @@ def _friendly_error(error):
 def interact(root, configuration, onboarding=False):
     mode = "assisted"
     if onboarding:
-        print("\nVera / Cleanroom Notebook")
-        print("AIに作らせても、開発者であることまで手放さない。")
-        print("\n" + Path(root).name + " をCleanroomとして開きます")
-        print("  読み取り  このプロジェクト内だけ")
-        print("  書き込み  隔離された候補にだけ行う")
-        print("  本体採用  あなたの確認後")
-        print("  記録      判断・検査・失敗・学びを作業帳へ残す")
-        choice = input("\nEnterで共同開発を始める、dで詳細を見る> ").strip().casefold()
+        from .cleanroom_notebook import render_first_open
+        render_first_open(root)
+        choice = input("\nEnterで研究ノートを開く、dで詳細を見る> ").strip().casefold()
         if choice == "d":
-            print("AIはCleanroomの外に候補を書きます。あなたが採用したものだけが本体に入ります。判断・検査・失敗・理解は、モデルではなくローカルの作業帳に残ります。")
-    from .model_settings import describe as describe_models
-    print("\nVera / " + Path(root).name + " の作業ノート")
-    print("Cleanroomは未変更  |  AIは候補帳に書く  |  ? でノートの索引")
-    print("AI: " + describe_models(configuration)["label"] + "  |  「モデルを設定する」で変更")
+            print("AIは候補を作り、Cleanroomは目的、判断、証拠、UNKNOWN、経験を別々に残します。採用されるまで本体には入りません。")
+    from .cleanroom_notebook import render_workspace_header
+    render_workspace_header(root, configuration)
     while True:
         try:
             request = _ask("ノートに書く")
