@@ -90,10 +90,90 @@ Vera CLI の公開 MVP は [`core/`](core/) にあります。
 ```bash
 cd core
 python -m pip install .
-verantyx --help
+
+# 共同開発したいプロジェクトへ移動して起動
+cd /path/to/your-project
+verantyx
 ```
 
-導入手順と最小ワークフローは、次の日本語ドキュメントを参照してください。
+初回でも長い設定を先に求めません。Vera は現在のフォルダを **Cleanroom** として開き、AI は本体ではなく隔離された候補帳で作業します。
+
+```text
+Vera / your-project の作業ノート
+Cleanroomは未変更  |  AIは候補帳に書く  |  ? でノートの索引
+
+ノートに書く > ログイン画面を改善して
+```
+
+作業後には、候補ファイルだけでなく、次回に残る検査、判断、失敗候補、人間が後から見直せる理解を「今日の記録」として表示します。
+
+### Cleanroom Notebook
+
+`Cleanroom` はAIが直接変更する作業場所ではありません。人間が所有するプロジェクト本体です。
+
+```text
+Cleanroom
+  あなたのプロジェクト本体
+  採用するまでAIは直接変更しない
+
+AIの候補帳
+  AIが調査・実装・検査する隔離された候補領域
+
+Veraの作業帳
+  判断、仮定、検証、失敗、学び、委譲候補を残すローカル資産
+```
+
+通常画面ではコマンド名を覚える必要はありません。`?`を入力するとノートの索引が開き、次のような自然な日本語をそのまま書けます。
+
+```text
+これまでの仕事を見る
+学習ノートを開く
+残した資産を見る
+判断と証拠を見る
+送信範囲を見る
+モデルを設定する
+設定を見る
+ローカル要約を作る
+終了
+```
+
+### モデルを設定する
+
+作業ノートで次のように書くと、プロジェクトごとのモデル設定頁を開けます。
+
+```text
+ノートに書く > モデルを設定する
+```
+
+設定できる接続先は次のとおりです。
+
+| 接続先 | 用途 | 認証情報の保存 |
+|---|---|---|
+| ChatGPT Codexサブスクリプション | このMacの既存Codexログインを利用 | APIキー不要 |
+| Ollama | 任意のローカルモデルを選択 | 不要 |
+| OpenAI API | OpenAI Responses API | `OPENAI_API_KEY`の名前だけを記録 |
+| Anthropic API | Anthropic Messages API | `ANTHROPIC_API_KEY`の名前だけを記録 |
+| Gemini API | Gemini Generate Content API | `GEMINI_API_KEY`の名前だけを記録 |
+| OpenAI互換ローカルサーバー | LM Studio、vLLM、llama.cpp、MLX系など | 原則不要 |
+
+APIキーの文字列はVeraが入力・保存しません。利用者がシェル環境へ設定した環境変数だけを、外部呼び出しの瞬間に読みます。
+
+```bash
+export OPENAI_API_KEY="..."
+export ANTHROPIC_API_KEY="..."
+export GEMINI_API_KEY="..."
+```
+
+OllamaやAPI接続では、作成役と検証役に別のモデルまたは別の接続先を選びます。これは、同じモデルの回答を二回並べて独立した検証であるかのように扱わないためです。Codexサブスクリプションは、既存の`implementation`と`verification`の役割設定を使用します。
+
+OpenAI互換ローカルサーバーは、次のいずれかのエンドポイントを提供する構成を対象にしています。
+
+```text
+http://127.0.0.1:1234/v1/responses
+http://127.0.0.1:1234/v1/chat/completions
+```
+
+導入手順と最小ワークフローの詳細は、次の日本語ドキュメントを参照してください。
 
 - [MVP ガイド](core/docs/OWNERSHIP_MVP.ja.md)
 - [CLI クイックスタート](core/docs/QUICKSTART.ja.md)
