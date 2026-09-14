@@ -27,7 +27,7 @@ from verantyx.domain.codec import canonical, decode, digest
 from verantyx.errors import LedgerError
 
 FORMAT = "verantyx.model-api.v1"
-PROVIDERS = ("openai", "anthropic", "gemini", "ollama")
+PROVIDERS = ("openai", "anthropic", "gemini", "ollama", "openai_compatible")
 MAX_INPUT = 512 * 1024
 FIELDS = {"format", "provider", "model", "endpoint", "key_env", "allow_loopback_http",
           "timeout", "max_output_tokens", "max_response_bytes"}
@@ -55,7 +55,7 @@ def validate_config(value):
     _require(key is None or (type(key) is str and bool(re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,127}", key))), "MODEL_API_KEY_ENV")
     reserved = {"PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "TEMP", "TMP", "SYSTEMROOT", "WINDIR"}
     _require(key is None or (key not in reserved and not key.startswith(("PYTHON", "LD_", "DYLD_"))), "MODEL_API_KEY_ENV")
-    _require(value["provider"] == "ollama" or key is not None, "MODEL_API_KEY_ENV")
+    _require(value["provider"] in ("ollama", "openai_compatible") or key is not None, "MODEL_API_KEY_ENV")
     _require(type(value["allow_loopback_http"]) is bool, "MODEL_API_TLS")
     for name, low, high in (("timeout", 1, 600), ("max_output_tokens", 1, 65536), ("max_response_bytes", 1024, 4 * 1024 * 1024)):
         _require(type(value[name]) is int and low <= value[name] <= high, "MODEL_API_LIMIT")
@@ -76,12 +76,15 @@ def validate_config(value):
         # Literal loopback only: a hostname called localhost can be remapped.
         _require(parsed.scheme == "https" or (parsed.scheme == "http" and loopback
                  and value["allow_loopback_http"]), "MODEL_API_TLS")
-        suffix = {"openai": "/responses", "anthropic": "/messages", "ollama": ("/api/generate", "/api/chat")}.get(value["provider"])
-        if suffix:
-            _require(parsed.path.endswith(suffix), "MODEL_API_ENDPOINT_PATH")
+        if value["provider"] == "openai_compatible":
+            _require(parsed.path.endswith(("/v1/responses", "/v1/chat/completions")), "MODEL_API_ENDPOINT_PATH")
         else:
-            model = value["model"].removeprefix("models/")
-            _require("/" not in model and parsed.path.endswith("/models/" + model + ":generateContent"), "MODEL_API_ENDPOINT_MODEL")
+            suffix = {"openai": "/responses", "anthropic": "/messages", "ollama": ("/api/generate", "/api/chat")}.get(value["provider"])
+            if suffix:
+                _require(parsed.path.endswith(suffix), "MODEL_API_ENDPOINT_PATH")
+            else:
+                model = value["model"].removeprefix("models/")
+                _require("/" not in model and parsed.path.endswith("/models/" + model + ":generateContent"), "MODEL_API_ENDPOINT_MODEL")
     except (ValueError, AttributeError):
         raise LedgerError("BRIDGE_CONFIG", {"reason": "MODEL_API_ENDPOINT"}) from None
     return value
@@ -125,9 +128,13 @@ def payload(config, value):
     prompt = canonical(value)
     _require(len(prompt.encode("utf-8")) <= MAX_INPUT, "MODEL_API_INPUT_LIMIT", "DOCUMENT_LIMIT")
     provider, model, tokens = config["provider"], config["model"], config["max_output_tokens"]
-    if provider == "openai":
+    if provider in ("openai", "openai_compatible"):
         # JSON mode avoids rewriting the public proposal schema for each
         # provider's structured-output subset. Local validation remains strict.
+        if provider == "openai_compatible" and urlsplit(config["endpoint"]).path.endswith("/chat/completions"):
+            return {"model": model,
+                    "messages": [{"role": "system", "content": INSTRUCTIONS}, {"role": "user", "content": prompt}],
+                    "max_tokens": tokens, "response_format": {"type": "json_object"}, "stream": False}
         return {"model": model, "instructions": INSTRUCTIONS, "input": prompt,
                 "max_output_tokens": tokens, "text": {"format": {"type": "json_object"}},
                 "stream": False, "store": False, "tools": []}
@@ -229,21 +236,29 @@ def response_text(provider, result):
         _require(condition, "MODEL_API_RESPONSE", "BRIDGE_PROTOCOL")
     check(type(result) is dict and not result.get("error"))
     texts = []
-    if provider == "openai":
-        check(result.get("object") == "response" and result.get("status") == "completed"
-              and result.get("incomplete_details") is None)
-        output = result.get("output")
-        check(type(output) is list and 1 <= len(output) <= 32)
-        for item in output:
-            check(type(item) is dict)
-            if item.get("type") == "reasoning":
-                continue
-            check(item.get("type") == "message" and item.get("role") == "assistant" and item.get("status") == "completed")
-            blocks = item.get("content")
-            check(type(blocks) is list and bool(blocks))
-            for block in blocks:
-                check(type(block) is dict and block.get("type") == "output_text" and type(block.get("text")) is str)
-                texts.append(block["text"])
+    if provider in ("openai", "openai_compatible"):
+        if result.get("object") == "response":
+            check(result.get("status") == "completed" and result.get("incomplete_details") is None)
+            output = result.get("output")
+            check(type(output) is list and 1 <= len(output) <= 32)
+            for item in output:
+                check(type(item) is dict)
+                if item.get("type") == "reasoning":
+                    continue
+                check(item.get("type") == "message" and item.get("role") == "assistant" and item.get("status") == "completed")
+                blocks = item.get("content")
+                check(type(blocks) is list and bool(blocks))
+                for block in blocks:
+                    check(type(block) is dict and block.get("type") == "output_text" and type(block.get("text")) is str)
+                    texts.append(block["text"])
+        else:
+            check(provider == "openai_compatible" and result.get("object") == "chat.completion")
+            choices = result.get("choices")
+            check(type(choices) is list and len(choices) == 1 and choices[0].get("finish_reason") == "stop")
+            message = choices[0].get("message")
+            check(type(message) is dict and message.get("role") == "assistant"
+                  and not message.get("tool_calls") and type(message.get("content")) is str)
+            texts.append(message["content"])
     elif provider == "anthropic":
         check(result.get("type") == "message" and result.get("role") == "assistant" and result.get("stop_reason") == "end_turn")
         blocks = result.get("content")
@@ -352,7 +367,7 @@ def request(config, value, observer=None):
     if config["key_env"]:
         _require(type(secret) is str and 1 <= len(secret) <= 8192 and secret.isascii()
                  and all(32 < ord(c) < 127 for c in secret), "MODEL_API_CREDENTIAL")
-        header = {"openai": "Authorization", "anthropic": "x-api-key", "gemini": "x-goog-api-key", "ollama": "Authorization"}[config["provider"]]
+        header = {"openai": "Authorization", "openai_compatible": "Authorization", "anthropic": "x-api-key", "gemini": "x-goog-api-key", "ollama": "Authorization"}[config["provider"]]
         headers[header] = ("Bearer " if header == "Authorization" else "") + secret
     if config["provider"] == "anthropic":
         headers["anthropic-version"] = "2023-06-01"

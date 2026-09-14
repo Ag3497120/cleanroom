@@ -6,6 +6,7 @@ No agent permission or human approval is created by this bootstrap config.
 from pathlib import Path
 import json
 import os
+import re
 import uuid
 
 
@@ -36,7 +37,7 @@ def validate(value: dict) -> None:
             raise ConfigError("CONFIG_VERSION")
         if set(value) != {"schema_version", "project", "ui", "learning", "runtime", "telemetry"}:
             raise ValueError()
-        project, ui, learning = value["project"], value["ui"], value["learning"]
+        project, ui, learning, runtime = value["project"], value["ui"], value["learning"], value["runtime"]
         if set(project) != {"id", "name", "purpose"} or set(ui) != {"locale"}:
             raise ValueError()
         uuid.UUID(project["id"])
@@ -50,8 +51,30 @@ def validate(value: dict) -> None:
             raise ValueError()
         if type(learning["max_items"]) is not int or not 1 <= learning["max_items"] <= 3:
             raise ValueError()
-        if value["runtime"] != {"backend": "none"}:
+        if type(runtime) is not dict or runtime.get("backend") != "none" or set(runtime) not in (
+            {"backend"}, {"backend", "model_selection"}
+        ):
             raise ValueError()
+        selection = runtime.get("model_selection")
+        if selection is not None:
+            if type(selection) is not dict or set(selection) != {
+                "format", "kind", "label", "creator_adapter", "reviewer_adapter"
+            }:
+                raise ValueError()
+            if selection["format"] != "verantyx.model-selection.v1" or selection["kind"] not in (
+                "codex_subscription", "model_api"
+            ):
+                raise ValueError()
+            if (not isinstance(selection["label"], str) or not 1 <= len(selection["label"].strip()) <= 240
+                    or any(ord(character) < 32 for character in selection["label"])):
+                raise ValueError()
+            paths = (selection["creator_adapter"], selection["reviewer_adapter"])
+            if any(not isinstance(path, str) or not re.fullmatch(
+                r"\.verantyx/model-adapters/[a-z0-9][a-z0-9-]{0,79}/(?:implementation|verification)\.json", path
+            ) for path in paths):
+                raise ValueError()
+            if not selection["creator_adapter"].endswith("/implementation.json") or not selection["reviewer_adapter"].endswith("/verification.json"):
+                raise ValueError()
         if set(value["telemetry"]) != {"enabled"} or value["telemetry"]["enabled"] is not False:
             raise ValueError()
     except ConfigError:

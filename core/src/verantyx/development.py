@@ -42,9 +42,13 @@ CATALOG = (
 )
 
 
-def _models(root):
+def _models(root, configuration):
+    from .model_settings import active_adapters
     from .commands_codex import create_configs
     from .personal_skills import roles
+    selected = active_adapters(root, configuration)
+    if selected is not None:
+        return roles(*selected)
     directory = Path(root) / "adapters"
     creator, reviewer = directory / "implementation.json", directory / "verification.json"
     if not creator.exists() and not reviewer.exists() and not (directory / "budget").exists():
@@ -58,7 +62,7 @@ def _partner(root, configuration, request, *, key, include, target, expectations
     from .commands_partner import register, dispatch
     parser = argparse.ArgumentParser()
     register(parser.add_subparsers(dest="command", required=True))
-    creator, reviewer = _models(root)
+    creator, reviewer = _models(root, configuration)
     argv = ["partner", request, "--mode", "implement", "--creator-adapter", creator,
             "--reviewer-adapter", reviewer, "--key", key, "--timeout", str(timeout)]
     for path in include:
@@ -356,7 +360,7 @@ def import_job(root, configuration, *, path, origin, label, mode, key,
             journal.write("started", {"intent_hash": digest(intent)})
         adapters = {}
         if mode == "auto":
-            creator, reviewer = _models(root)
+            creator, reviewer = _models(root, configuration)
             adapters = {"creator_adapter": creator, "reviewer_adapter": reviewer}
         try:
             imported = import_work(root, configuration, body=body, origin_project=origin,

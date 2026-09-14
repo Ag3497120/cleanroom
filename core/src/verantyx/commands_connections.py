@@ -11,7 +11,7 @@ def accepts(command):
 
 def register(sub):
     model = sub.add_parser("model-api-config", add_help=False, allow_abbrev=False)
-    model.add_argument("--provider", required=True, choices=("openai", "anthropic", "gemini", "ollama"))
+    model.add_argument("--provider", required=True, choices=("openai", "anthropic", "gemini", "ollama", "openai_compatible"))
     for name in ("model", "endpoint", "output"):
         model.add_argument("--" + name, required=True)
     model.add_argument("--key-env")

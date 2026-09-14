@@ -478,6 +478,140 @@ def _newsletter(root, configuration, work=None):
     print("公開・配信は行っていません。")
 
 
+_MODEL_PRESETS = {
+    "ollama": {
+        "title": "Ollamaのローカルモデル",
+        "provider": "ollama",
+        "endpoint": "http://127.0.0.1:11434/api/chat",
+        "key_env": None,
+        "loopback": True,
+    },
+    "openai": {
+        "title": "OpenAI API",
+        "provider": "openai",
+        "endpoint": "https://api.openai.com/v1/responses",
+        "key_env": "OPENAI_API_KEY",
+        "loopback": False,
+    },
+    "anthropic": {
+        "title": "Anthropic API",
+        "provider": "anthropic",
+        "endpoint": "https://api.anthropic.com/v1/messages",
+        "key_env": "ANTHROPIC_API_KEY",
+        "loopback": False,
+    },
+    "gemini": {
+        "title": "Gemini API",
+        "provider": "gemini",
+        "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+        "key_env": "GEMINI_API_KEY",
+        "loopback": False,
+    },
+    "openai_compatible": {
+        "title": "OpenAI互換ローカルサーバー",
+        "provider": "openai_compatible",
+        "endpoint": "http://127.0.0.1:1234/v1/chat/completions",
+        "key_env": None,
+        "loopback": True,
+    },
+}
+
+
+def _model_name(prompt, available=(), unavailable=None):
+    value = _ask(prompt).strip()
+    if value.isdigit() and 1 <= int(value) <= len(available):
+        value = available[int(value) - 1]
+    if not value:
+        return None
+    if value == unavailable:
+        print("作成役と検証役には、異なるモデルまたは異なる接続先が必要です。")
+        return None
+    return value
+
+
+def _configure_model_api(root, configuration, preset_name):
+    from . import model_settings
+    preset = _MODEL_PRESETS[preset_name]
+    print("\n--- " + preset["title"] + " ----------------------------------------")
+    if preset["key_env"]:
+        print("APIキーは入力・保存しません。シェルの " + preset["key_env"] + " だけを利用します。")
+    else:
+        print("この接続ではAPIキーを保存しません。ローカルサーバーだけを使います。")
+    endpoint = preset["endpoint"]
+    if preset_name == "openai_compatible":
+        endpoint = _ask("ローカルサーバーのURL", endpoint).strip() or endpoint
+        print("/v1/responses または /v1/chat/completions を提供するサーバーを指定してください。")
+    available = model_settings.ollama_models() if preset_name == "ollama" else []
+    if available:
+        print("このMacで見つかったOllamaモデル")
+        for index, model in enumerate(available, 1):
+            print("  " + str(index) + ". " + model)
+    creator = _model_name("作成役のモデル名" + (" または番号" if available else ""), available)
+    if creator is None:
+        return
+    reviewer = _model_name("検証役の別モデル名" + (" または番号" if available else ""), available, creator)
+    if reviewer is None:
+        return
+    creator_endpoint = endpoint.format(model=creator) if "{model}" in endpoint else endpoint
+    reviewer_endpoint = endpoint.format(model=reviewer) if "{model}" in endpoint else endpoint
+    try:
+        saved = model_settings.activate_api(
+            root, configuration, provider=preset["provider"],
+            label=preset["title"] + " / " + creator + " -> " + reviewer,
+            creator_model=creator, reviewer_model=reviewer,
+            creator_endpoint=creator_endpoint, reviewer_endpoint=reviewer_endpoint,
+            key_env=preset["key_env"], allow_loopback_http=preset["loopback"],
+        )
+    except (LedgerError, OSError) as error:
+        print("モデル設定を保存できませんでした。接続先、モデル名、または現在の設定を確認してください。")
+        if getattr(error, "code", "") == "ROLE_COLLISION":
+            print("同じ外部モデルを二役に使うことはできません。検証役には別モデルを選んでください。")
+        return
+    print("作業ノートのAIを設定しました: " + saved["selection"]["label"])
+    print("次の依頼から、この作成役と検証役を使います。")
+
+
+def _model_settings(root, configuration):
+    from . import model_settings
+    while True:
+        current = model_settings.describe(configuration)
+        print("\n--- モデルの設定 ----------------------------------------------")
+        print("現在のAI: " + current["label"])
+        print("モデルの応答は候補です。Cleanroomへの採用、判断、検証はVera側に残ります。")
+        print("1. ChatGPT Codexサブスクリプションを使う")
+        print("2. Ollamaのローカルモデルを使う")
+        print("3. OpenAI APIを使う")
+        print("4. Anthropic APIを使う")
+        print("5. Gemini APIを使う")
+        print("6. OpenAI互換のローカルサーバーを使う")
+        print("7. 既定のCodex接続へ戻す")
+        print("0. 作業ノートへ戻る")
+        choice = _ask("選ぶ").strip()
+        if choice in ("", "0", "戻る"):
+            return
+        try:
+            if choice == "1":
+                saved = model_settings.activate_codex(root, configuration)
+                print("作業ノートのAIを設定しました: " + saved["selection"]["label"])
+            elif choice == "2":
+                _configure_model_api(root, configuration, "ollama")
+            elif choice == "3":
+                _configure_model_api(root, configuration, "openai")
+            elif choice == "4":
+                _configure_model_api(root, configuration, "anthropic")
+            elif choice == "5":
+                _configure_model_api(root, configuration, "gemini")
+            elif choice == "6":
+                _configure_model_api(root, configuration, "openai_compatible")
+            elif choice == "7":
+                model_settings.clear(root, configuration)
+                print("既定のCodex接続へ戻しました。")
+            else:
+                print("番号を選ぶか、0で作業ノートへ戻ってください。")
+        except (LedgerError, OSError):
+            print("モデル設定を保存できませんでした。現在のCleanroom設定は変更していません。")
+
+
 def _notebook_index():
     print("\n--- ノートの索引 ----------------------------------------------")
     print("コマンドを覚える必要はありません。次の言葉を、そのままノートに書けます。")
@@ -485,6 +619,7 @@ def _notebook_index():
     print("  学習ノートを開く         後から身につける理解と委譲を開く")
     print("  残した資産を見る         判断、検査、失敗事例を読む")
     print("  判断と証拠を見る         人間の判断、AIの仮定、UNKNOWNを確認する")
+    print("  モデルを設定する         AIの接続先と作成役・検証役を選ぶ")
     print("  送信範囲を見る           次の作業でAIに渡るファイルを確認する")
     print("  設定を見る               Cleanroomの通常設定を確認する")
     print("  ローカル要約を作る       今回までの記録をまとめる")
@@ -508,6 +643,9 @@ def _notebook_intent(value):
         "証拠を見る": "decisions",
         "送信範囲を見る": "scope",
         "送るファイルを見る": "scope",
+        "モデルを設定する": "models",
+        "AIを設定する": "models",
+        "モデルを見る": "models",
         "設定を見る": "settings",
         "設定を確認する": "settings",
         "ローカル要約を作る": "export",
@@ -524,6 +662,7 @@ def _notebook_intent(value):
         "/decisions": "decisions",
         "/details": "decisions",
         "/scope": "scope",
+        "/model": "models",
         "/settings": "settings",
         "/mode": "settings",
         "/export": "export",
@@ -554,6 +693,8 @@ def _notebook_action(root, configuration, mode, action):
         print("秘密情報候補とプロジェクト外は送信しません。")
         for path in files:
             print("  " + path)
+    elif action == "models":
+        _model_settings(root, configuration)
     elif action == "settings":
         print("\n--- Cleanroomの設定 ------------------------------------------")
         print("通常設定: プロジェクト内のみ / 候補を隔離保存 / 本体への採用は明示確認後 / 学習は作業後に短く表示")
@@ -591,8 +732,10 @@ def interact(root, configuration, onboarding=False):
         choice = input("\nEnterで共同開発を始める、dで詳細を見る> ").strip().casefold()
         if choice == "d":
             print("AIはCleanroomの外に候補を書きます。あなたが採用したものだけが本体に入ります。判断・検査・失敗・理解は、モデルではなくローカルの作業帳に残ります。")
+    from .model_settings import describe as describe_models
     print("\nVera / " + Path(root).name + " の作業ノート")
     print("Cleanroomは未変更  |  AIは候補帳に書く  |  ? でノートの索引")
+    print("AI: " + describe_models(configuration)["label"] + "  |  「モデルを設定する」で変更")
     while True:
         try:
             request = _ask("ノートに書く")
