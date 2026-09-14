@@ -50,6 +50,7 @@ def parse(argv):
     starter.add_argument("--plain", action="store_true")
     setup = sub.add_parser("setup", add_help=False, allow_abbrev=False)
     setup.add_argument("--non-interactive", action="store_true")
+    setup.add_argument("--guided", action="store_true")
     setup.add_argument("--name")
     setup.add_argument("--purpose")
     setup.add_argument("--learning", choices=("manual", "digest", "off"))
@@ -115,7 +116,19 @@ def parse(argv):
     register_v04(sub)
     if options.help or options.version:
         return options, argparse.Namespace(command=None)
-    args = parser.parse_args(rest)
+    try:
+        args = parser.parse_args(rest)
+    except config.ConfigError:
+        # A normal agent accepts `verantyx "do this work"` without requiring
+        # users to learn a verb before their first task. Flags still retain the
+        # strict command parser and are never guessed as a request.
+        if rest and all(not value.startswith("-") for value in rest):
+            args = argparse.Namespace(command="develop", request=" ".join(rest), input=None,
+                                      origin_project=None, capture_mode="assisted", key=None, include=[],
+                                      target=None, expect=[], reject_json=[], continue_from=None,
+                                      assumption=None, allow_contested_handoff=False)
+        else:
+            raise
     if options.tutorial:
         if args.command is not None:
             raise config.ConfigError("ARGUMENTS")
@@ -186,6 +199,7 @@ def summary(root, value, locale, review=False):
 
 def setup(root, existing, expected, locale, args, explicit_locale, as_json, show_guide=False):
     non_interactive = getattr(args, "non_interactive", False)
+    guided = getattr(args, "guided", False)
     if not non_interactive and (as_json or not sys.stdin.isatty() or not sys.stdout.isatty()):
         raise config.ConfigError("INTERACTIVE_REQUIRED")
     value = copy.deepcopy(existing) if existing is not None else config.defaults(root, locale)
@@ -202,15 +216,19 @@ def setup(root, existing, expected, locale, args, explicit_locale, as_json, show
             guide(locale)
         print("\n" + text(locale, "setup_title"))
         print(text(locale, "project_path") + ": " + visible(root))
-        print(text(locale, "cancel_hint"))
-        value["project"]["name"] = prompt(locale, "name_prompt", value["project"]["name"])
+        if locale == "ja":
+            print("AIに任せたいことを一文で入力してください。詳細な設定は後から変更できます。")
+        else:
+            print("Describe what you want to build. Advanced settings can be changed later.")
         value["project"]["purpose"] = prompt(locale, "purpose_prompt", value["project"]["purpose"])
-        modes = ("manual", "digest", "off")
-        for number, mode in enumerate(modes, 1):
-            print(f"  {number}. {text(locale, 'learning_' + mode)}")
-        choice = select_number(locale, "learning_prompt", modes.index(value["learning"]["mode"]) + 1, 1, 3)
-        value["learning"]["mode"] = modes[choice - 1]
-        value["learning"]["max_items"] = select_number(locale, "limit_prompt", value["learning"]["max_items"], 1, 3)
+        if guided:
+            value["project"]["name"] = prompt(locale, "name_prompt", value["project"]["name"])
+            modes = ("manual", "digest", "off")
+            for number, mode in enumerate(modes, 1):
+                print(f"  {number}. {text(locale, 'learning_' + mode)}")
+            choice = select_number(locale, "learning_prompt", modes.index(value["learning"]["mode"]) + 1, 1, 3)
+            value["learning"]["mode"] = modes[choice - 1]
+            value["learning"]["max_items"] = select_number(locale, "limit_prompt", value["learning"]["max_items"], 1, 3)
     for key in ("name", "purpose"):
         if getattr(args, key, None) is not None:
             value["project"][key] = getattr(args, key)
@@ -219,7 +237,7 @@ def setup(root, existing, expected, locale, args, explicit_locale, as_json, show
     if getattr(args, "max_items", None) is not None:
         value["learning"]["max_items"] = args.max_items
     config.validate(value)
-    if not non_interactive:
+    if not non_interactive and guided:
         summary(root, value, locale, review=True)
         if select_number(locale, "save_prompt", 2, 1, 2) != 1:
             print(text(locale, "cancelled"))
@@ -230,8 +248,10 @@ def setup(root, existing, expected, locale, args, explicit_locale, as_json, show
               "config_path": str(config.config_path(root)), "config": value, "agent_execution": False})
     else:
         print(text(locale, "saved", path=visible(config.config_path(root))))
-        print(text(locale, "next"))
-        print(text(locale, "phase"))
+        if locale == "ja":
+            print("準備できました。次は `verantyx --lang ja develop` を実行し、AIに頼みたいことをそのまま入力してください。")
+        else:
+            print("Ready. Run `verantyx develop` and enter the work you want to delegate.")
     return 0
 
 
@@ -410,16 +430,22 @@ def main(argv=None):
                 return setup(root, existing, expected, locale, args, bool(options.lang), as_json, show_guide=True)
             guide(locale, as_json)
             return 0
-        if args.command is None and existing is None and sys.stdin.isatty() and sys.stdout.isatty() and not as_json:
-            return setup(root, existing, expected, locale, args, bool(options.lang), as_json, show_guide=True)
-        if args.command == "start" or (args.command is None and existing is not None
-                and sys.stdin.isatty() and sys.stdout.isatty() and not as_json):
+        if args.command is None and sys.stdin.isatty() and sys.stdout.isatty() and not as_json:
+            onboarding = existing is None
+            if existing is None:
+                config.save(root, config.defaults(root, locale), expected)
+                existing, expected = config.load(root)
+            from .development_console import interact
+            result = interact(root, existing, onboarding=onboarding)
+            return 0 if result.get("ok", True) else 4
+        if args.command == "start":
             if existing is None:
                 raise LedgerError("NOT_CONFIGURED")
             from .console import start
-            if args.command is None:
-                args = argparse.Namespace(command="start", adapter=None, timeout=600, include=[], plain=False)
             return start(root, existing, locale, args, as_json)
+        if existing is None and args.command == "develop" and args.request:
+            config.save(root, config.defaults(root, locale), expected)
+            existing, expected = config.load(root)
         if args.command not in (None, "status", "config", "doctor"):
             if existing is None:
                 raise LedgerError("NOT_CONFIGURED")

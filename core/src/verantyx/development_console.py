@@ -1,5 +1,6 @@
 """Human-facing connected work and ownership UI using existing operations."""
 from pathlib import Path
+import os
 import uuid
 
 from .errors import LedgerError
@@ -26,6 +27,10 @@ def _ask(prompt, default=""):
 
 def _yes(prompt):
     return _ask(prompt + " [y/N]").lower() == "y"
+
+
+def _start(prompt):
+    return _ask(prompt + " [Y/n]", "y").lower() not in ("n", "no")
 
 
 def _pick(title, rows, label):
@@ -61,67 +66,160 @@ def _conditions(default_target=""):
     return target, values
 
 
+def _friendly_status(status):
+    return {
+        "CANDIDATE_SAVED": "安全な候補を作成しました",
+        "COMPLETE_BOUNDED": "候補と検査を記録しました",
+        "DECISION_REQUIRED": "人間の判断を待っています",
+        "UNKNOWN_CONTEXT": "追加の情報が必要です",
+        "MODEL_CALL_FAILED": "AIへの接続を完了できませんでした",
+        "MODEL_OUTCOME_UNKNOWN": "AIの結果を確認できませんでした",
+        "SOURCE_RECORDED": "外部AIの仕事を記録しました",
+    }.get(status, "作業の状態を記録しました")
+
+
 def show_result(root, result):
-    print("\n仕事: " + result.get("request", result.get("run_id", "")))
-    print("今回の到達点: " + result.get("status", "UNKNOWN"))
+    print("\n仕事を記録しました: " + result.get("request", result.get("run_id", "")))
+    print("状態: " + _friendly_status(result.get("status", "UNKNOWN")))
     gate = result.get("task_gate")
-    if isinstance(gate, dict):
-        print("判断ゲート: " + str(gate.get("status", "UNKNOWN")))
-        if gate.get("human_assumption"):
-            print("今回だけの人間前提: " + str(gate["human_assumption"]))
-    print("正規ファイルへの採用: していません / 人間の習熟: 認定しません")
+    print("\nPROJECT DELTA")
     if result.get("artifact_directory"):
-        print("成果物: " + str(Path(root) / result["artifact_directory"]))
+        print("AIの成果物候補: " + str(Path(root) / result["artifact_directory"]))
+        print("本体プロジェクト: 変更していません")
+    else:
+        print("候補作成: 今回は本体へ変更を加えていません")
+    print("\nSYSTEM DELTA")
     if result.get("judgment_run"):
-        print("条件付き検査の記録: " + result["judgment_run"])
-    if result.get("handoff"):
-        print("解釈の照合: " + result["handoff"]["status"])
-    print("学習候補: " + str(len(result.get("learning_candidates", []))))
-    for item in result.get("learning_proposals", []):
-        print("  " + item["concept"])
-    if result.get("recovery_bundle"):
-        print("回収した判断・方法・学習: " + result["recovery_bundle"].get("readme", "未保存"))
-    if result.get("reason"):
-        print("次に解決する点: " + result["reason"])
+        print("再利用できる検査記録: " + result["judgment_run"])
+    else:
+        print("判断、仮定、検証方法、失敗候補をローカル台帳へ保存しました")
+    print("\nHUMAN DELTA")
+    if isinstance(gate, dict) and gate.get("human_assumption"):
+        print("あなたが決めた前提: " + str(gate["human_assumption"]))
+    for item in result.get("learning_proposals", [])[:2]:
+        if item.get("concept"):
+            print("後から見直せる理解: " + item["concept"])
+    if not result.get("learning_proposals"):
+        print("学習候補: 今回は表示を省略しました")
     if result.get("next_action"):
-        print(result["next_action"])
-    if result.get("historical_receipt"):
-        print("保存済みの結果です。再送による追加のAI呼び出しはありません。")
-    print("同じ仕事への追加依頼は「仕事の続き」から選べます。")
+        print("確認したいこと: " + result["next_action"])
+    elif result.get("reason"):
+        print("確認が必要な点: " + result["reason"])
+    print("続きや詳細は /history から確認できます。")
 
 
-def _new_work(root, configuration, mode, previous=None):
+_CONTEXT_FILENAMES = {
+    "readme.md", "package.json", "pyproject.toml", "requirements.txt", "composer.json",
+    "cargo.toml", "go.mod", "index.html", "app.py", "main.py", "main.ts", "main.js",
+    "vite.config.ts", "vite.config.js", "next.config.js", "next.config.mjs",
+}
+_CONTEXT_EXTENSIONS = {".py", ".ts", ".tsx", ".js", ".jsx", ".html", ".css", ".md", ".json",
+                       ".toml", ".yaml", ".yml", ".swift", ".rs", ".go", ".java", ".php"}
+_EXCLUDED_DIRECTORIES = {".git", ".verantyx", ".venv", "venv", "node_modules", "dist", "build", "__pycache__"}
+_SECRET_MARKERS = (".env", "secret", "credential", "password", "private", "id_rsa", ".pem", ".key")
+
+
+def _context_files(root, limit=8):
+    """Choose a small, project-local context set without asking for raw paths."""
+    root = Path(root).resolve()
+    preferred, fallback = [], []
+    for current, directories, filenames in os.walk(root):
+        folder = Path(current)
+        relative_folder = folder.relative_to(root)
+        if len(relative_folder.parts) > 3:
+            directories[:] = []
+            continue
+        directories[:] = [name for name in directories
+                           if name not in _EXCLUDED_DIRECTORIES and not name.startswith(".")]
+        for name in sorted(filenames):
+            lowered = name.casefold()
+            if lowered.startswith(".") or any(marker in lowered for marker in _SECRET_MARKERS):
+                continue
+            path = folder / name
+            try:
+                if not path.is_file() or path.stat().st_size > 65536:
+                    continue
+            except OSError:
+                continue
+            relative = path.relative_to(root).as_posix()
+            if lowered in _CONTEXT_FILENAMES:
+                preferred.append(relative)
+            elif path.suffix.casefold() in _CONTEXT_EXTENSIONS:
+                fallback.append(relative)
+    selected = []
+    for path in preferred + fallback:
+        if path not in selected:
+            selected.append(path)
+        if len(selected) == limit:
+            break
+    return selected
+
+
+def _show_start_plan(context_files, preflight, previous=None):
+    print("\n開始できます")
+    print("\nAIが行う")
+    print("  現在の構成の調査")
+    print("  隔離された候補の作成")
+    print("  候補に対する基本的な検査")
+    print("\nあなたに戻す判断")
+    print("  " + ("今回の前提を一つ確認します" if preflight.get("question") else "必要になったときだけ確認します"))
+    print("\n証拠で確認すること")
+    print("  保存された候補と、明示した検査結果")
+    print("\n本体プロジェクト")
+    print("  まだ変更しません")
+    print("\n外部AIへ送る範囲")
+    print("  プロジェクト内の関連ファイル: " + str(len(context_files)) + "件")
+    print("  プロジェクト外と秘密情報候補: 送信しません")
+    if previous:
+        print("  前の仕事を引き継ぐ: " + previous["label"])
+
+
+def _confirm_context(context_files):
+    while True:
+        choice = input("Enterで開始、vで送信範囲、nで中止> ").strip().casefold()
+        if choice in ("", "y", "yes", "start"):
+            return True
+        if choice in ("n", "no", "q", "quit"):
+            return False
+        if choice in ("v", "view"):
+            print("\n今回送るプロジェクト内ファイル")
+            if context_files:
+                for path in context_files:
+                    print("  " + path)
+            else:
+                print("  自動選択できる小さなテキストファイルはありません。プロジェクト文脈だけを使います。")
+            continue
+        print("Enterで開始、vで一覧、nで中止を選んでください。")
+
+
+def _new_work(root, configuration, mode, previous=None, request=None):
     from .development import run_work
     from .constitution import assess
-    request = _ask("追加依頼" if previous else "AIへ任せる仕事（空欄: 戻る）")
+    request = request if request is not None else _ask(
+        "追加でAIに頼みたいこと（空欄: 戻る）" if previous else "何を一緒に進めますか？"
+    )
     if not request:
         return
-    includes = []
-    print("外部へ送るファイルを選びます。フォルダ全体は自動送信しません。")
-    for _ in range(16):
-        path = _ask("ファイル（空欄: 終了）")
-        if not path:
-            break
-        includes.append(path)
-    target, conditions = _conditions()
-    allow = _yes("代替解釈の文章だけが不一致の場合、合意は未確認のまま候補を受け取りますか")
     preflight = assess(root, configuration, request)
-    print("判断ゲート: " + preflight["status"])
-    print(preflight["reason"])
     assumption = None
     if preflight.get("question"):
-        print("人間に残す判断: " + preflight["question"])
-        assumption = _ask("今回だけの前提（空欄: 判断ギャップとして保存）")
-    print("モデル: gpt-5.3-codex-spark / low、実装役と検証役。独自の生成回数上限なし。")
-    print("送信範囲: " + request + " / " + ", ".join(includes))
-    if previous:
-        print("引き継ぐ記録: " + previous["label"])
-    if not _yes("この範囲を送信し、候補生成と資産回収を開始しますか"):
+        print("\nあなたに決めてほしいことが1件あります")
+        print(preflight["question"])
+        assumption = _ask("今回の前提（空欄: 判断待ちとして保存）")
+        if not assumption and preflight["status"] in ("ASK_ONE_DECISION", "UNKNOWN"):
+            result = _mutate(root, configuration, run_work, request=request, key=_key(), include=[],
+                             target=None, expectations=[], mode=mode, allow_contested=False,
+                             continue_from=previous["run_id"] if previous else None, assumption=None)
+            show_result(root, result)
+            return result
+    context_files = _context_files(root)
+    _show_start_plan(context_files, preflight, previous)
+    if not _confirm_context(context_files):
         return
-    result = _mutate(root, configuration, run_work, request=request, key=_key(), include=includes,
-                      target=target, expectations=conditions, mode=mode,
-                      allow_contested=allow, continue_from=previous["run_id"] if previous else None,
-                      assumption=assumption or None)
+    result = _mutate(root, configuration, run_work, request=request, key=_key(), include=context_files,
+                     target=None, expectations=[], mode=mode, allow_contested=False,
+                     continue_from=previous["run_id"] if previous else None,
+                     assumption=assumption or None)
     show_result(root, result)
     return result
 
@@ -387,50 +485,78 @@ def _newsletter(root, configuration, work=None):
     print("公開・配信は行っていません。")
 
 
-def interact(root, configuration):
+def _direct_command(root, configuration, mode, value):
+    command = value.strip().split(maxsplit=1)[0].casefold()
+    if command in ("/quit", "/exit"):
+        return True
+    if command == "/help":
+        print("/history 仕事と候補を見る · /learn 学習と委譲 · /assets 保存した資産 · /scope 送信範囲")
+        print("/decisions 判断と証拠を見る · /settings 設定 · /mode 資産化方針 · /export ローカル要約 · /quit 終了")
+    elif command == "/history":
+        _work_detail(root, configuration, mode)
+    elif command in ("/learn", "/assets"):
+        _dictionary(root, configuration)
+    elif command in ("/decisions", "/details"):
+        print("仕事を選ぶと、人間の判断、AIの仮定、証拠、UNKNOWNを確認できます。")
+        _work_detail(root, configuration, mode)
+    elif command == "/scope":
+        files = _context_files(root)
+        print("通常の送信範囲: 現在のプロジェクト内のみ")
+        print("秘密情報候補とプロジェクト外は送信しません。")
+        for path in files:
+            print("  " + path)
+    elif command == "/mode":
+        print("通常モード: 重要な判断・検証・失敗・理解だけを裏側で資産化します。")
+    elif command == "/settings":
+        print("通常設定: プロジェクト内のみ / 候補を隔離保存 / 本体への採用は明示確認後 / 学習は作業後に短く表示")
+        print("詳細設定: verantyx setup --guided")
+    elif command in ("/export", "/digest"):
+        _newsletter(root, configuration)
+    else:
+        print("その操作はありません。/help で確認できます。")
+    return False
+
+
+def _friendly_error(error):
+    code = getattr(error, "code", type(error).__name__)
+    if code == "PATH_SCOPE":
+        print("開始できませんでした。フォルダやプロジェクト外の場所は通常の送信範囲に含めません。")
+        print("通常はファイルを選ぶ必要はありません。依頼だけを入力すれば、Veraがプロジェクト内の関連ファイルを選びます。")
+    elif code in ("BRIDGE_START_FAILED", "BRIDGE_PROCESS_FAILED", "CODEX_CALL_FAILED"):
+        print("AIへの接続を開始できませんでした。保存済みの判断と作業履歴は失われていません。")
+        print("接続設定を確認するには /settings を使ってください。")
+    else:
+        print("この仕事はまだ開始していません。必要な情報を確認してから、同じ依頼をもう一度送れます。")
+        print("詳細な状態は /details から確認できます。")
+
+
+def interact(root, configuration, onboarding=False):
     mode = "assisted"
-    print("Vera / 仕事から、判断と自分の理解を取り戻す")
-    print("個人の技能資産: " + str(root))
-    print("Spark / low の二役。独自の生成回数上限なし。モデル設定画面はありません。")
+    if onboarding:
+        print("\nVera")
+        print("AIに作らせても、開発者であることまで手放さない。")
+        print("\n" + Path(root).name + " を検出しました")
+        print("  読み取り  このプロジェクト内だけ")
+        print("  書き込み  隔離された候補にだけ行う")
+        print("  本体採用  あなたの確認後")
+        print("  記録      判断・検査・失敗・学びをローカル保存")
+        choice = input("\nEnterで共同開発を始める、dで詳細を見る> ").strip().casefold()
+        if choice == "d":
+            print("外部AIは候補を作り、Veraは本体へ入れる前に検証します。重要な判断だけを人間へ戻し、経験はローカルに残します。")
+    print("\nVera · " + Path(root).name)
+    print("候補のみ / 本体未変更 / ローカル台帳ON  ·  /help で管理操作")
     while True:
-        print("\n1. AIへ仕事を依頼  2. 外部AIの仕事を取り込む  3. 仕事の続き・成果物")
-        print("4. 学習と委譲の辞書  5. ニュースレター  6. 資産化モード")
-        print("7. 詳細な既存台帳  0. 終了 / 現在の資産化: " + mode)
         try:
-            action = _ask("操作", "0")
-            if action == "0":
+            request = _ask("何を一緒に進めますか？")
+            if not request:
                 return {"ok": True, "command": "develop", "status": "CLOSED"}
-            if action == "1":
-                result = _new_work(root, configuration, mode)
-                if result:
-                    _work_detail(root, configuration, mode, result["run_id"])
-            elif action == "2":
-                result = _import(root, configuration, mode)
-                if result:
-                    _work_detail(root, configuration, mode, result["run_id"])
-            elif action == "3":
-                _work_detail(root, configuration, mode)
-            elif action == "4":
-                _dictionary(root, configuration)
-            elif action == "5":
-                _newsletter(root, configuration)
-            elif action == "6":
-                selected = _pick("次の仕事から適用", ["assisted", "auto", "manual"],
-                                 lambda x: {"assisted": "原文と局所的な候補を回収。詳しいAI資産化は任意",
-                                            "auto": "取り込み時にも二役で資産候補を作成",
-                                            "manual": "原文の記録を中心に、明示した条件だけを扱う"}[x])
-                mode = selected or mode
-            elif action == "7":
-                import subprocess
-                import sys
-                subprocess.run([sys.executable, "-m", "verantyx", "--project", str(root),
-                                "--lang", "ja", "skills", "--interactive"], check=False)
+            if request.startswith("/"):
+                if _direct_command(root, configuration, mode, request):
+                    return {"ok": True, "command": "develop", "status": "CLOSED"}
+                continue
+            _new_work(root, configuration, mode, request=request)
         except (EOFError, KeyboardInterrupt):
             print("\n中止しました。保存済みの履歴は残します。")
             return {"ok": True, "command": "develop", "status": "CLOSED"}
         except (LedgerError, OSError) as error:
-            print("実行を停止: " + getattr(error, "code", type(error).__name__))
-            details = getattr(error, "details", None)
-            if details:
-                print(str(details))
-            print("条件は JSON /retry_limit = 3 のような明示形式です。失敗を合格扱いせず、履歴から続けられます。")
+            _friendly_error(error)

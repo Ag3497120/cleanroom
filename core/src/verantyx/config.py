@@ -81,7 +81,7 @@ def defaults(root: Path, locale: str) -> dict:
         "schema_version": 1,
         "project": {"id": str(uuid.uuid4()), "name": root.name or "verantyx", "purpose": ""},
         "ui": {"locale": locale},
-        "learning": {"mode": "manual", "max_items": 1},
+        "learning": {"mode": "digest", "max_items": 1},
         "runtime": {"backend": "none"},
         "telemetry": {"enabled": False},
     }
