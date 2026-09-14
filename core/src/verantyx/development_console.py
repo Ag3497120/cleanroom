@@ -79,33 +79,34 @@ def _friendly_status(status):
 
 
 def show_result(root, result):
-    print("\n仕事を記録しました: " + result.get("request", result.get("run_id", "")))
-    print("状態: " + _friendly_status(result.get("status", "UNKNOWN")))
+    print("\n--- 今日の記録 ------------------------------------------------")
+    print("ノートに書いたこと: " + result.get("request", result.get("run_id", "")))
+    print("いまの状態: " + _friendly_status(result.get("status", "UNKNOWN")))
     gate = result.get("task_gate")
-    print("\nPROJECT DELTA")
+    print("\n[ Cleanroom / あなたのプロジェクト ]")
     if result.get("artifact_directory"):
-        print("AIの成果物候補: " + str(Path(root) / result["artifact_directory"]))
-        print("本体プロジェクト: 変更していません")
+        print("AIの候補帳: " + str(Path(root) / result["artifact_directory"]))
+        print("本体: 変更していません。採用はあなたが決めます。")
     else:
-        print("候補作成: 今回は本体へ変更を加えていません")
-    print("\nSYSTEM DELTA")
+        print("本体: 今回もCleanroomの外からは変更していません")
+    print("\n[ 作業帳 / Veraが残したもの ]")
     if result.get("judgment_run"):
-        print("再利用できる検査記録: " + result["judgment_run"])
+        print("次回も使える検査: " + result["judgment_run"])
     else:
-        print("判断、仮定、検証方法、失敗候補をローカル台帳へ保存しました")
-    print("\nHUMAN DELTA")
+        print("判断、仮定、検証方法、失敗候補を作業帳へ保存しました")
+    print("\n[ あなたへの付箋 ]")
     if isinstance(gate, dict) and gate.get("human_assumption"):
-        print("あなたが決めた前提: " + str(gate["human_assumption"]))
+        print("今回あなたが決めたこと: " + str(gate["human_assumption"]))
     for item in result.get("learning_proposals", [])[:2]:
         if item.get("concept"):
             print("後から見直せる理解: " + item["concept"])
     if not result.get("learning_proposals"):
-        print("学習候補: 今回は表示を省略しました")
+        print("学習候補: 今回は付箋を増やしませんでした")
     if result.get("next_action"):
         print("確認したいこと: " + result["next_action"])
     elif result.get("reason"):
         print("確認が必要な点: " + result["reason"])
-    print("続きや詳細は /history から確認できます。")
+    print("続きは「これまでの仕事を見る」とノートに書けば開けます。")
 
 
 _CONTEXT_FILENAMES = {
@@ -156,27 +157,19 @@ def _context_files(root, limit=8):
 
 
 def _show_start_plan(context_files, preflight, previous=None):
-    print("\n開始できます")
-    print("\nAIが行う")
-    print("  現在の構成の調査")
-    print("  隔離された候補の作成")
-    print("  候補に対する基本的な検査")
-    print("\nあなたに戻す判断")
-    print("  " + ("今回の前提を一つ確認します" if preflight.get("question") else "必要になったときだけ確認します"))
-    print("\n証拠で確認すること")
-    print("  保存された候補と、明示した検査結果")
-    print("\n本体プロジェクト")
-    print("  まだ変更しません")
-    print("\n外部AIへ送る範囲")
-    print("  プロジェクト内の関連ファイル: " + str(len(context_files)) + "件")
-    print("  プロジェクト外と秘密情報候補: 送信しません")
+    print("\n--- 作業前のメモ ----------------------------------------------")
+    print("Cleanroom: 本体はあなたが採用するまで変えません")
+    print("AIの作業帳: 現在の構成を読み、候補と検査記録を作ります")
+    print("あなたへの付箋: " + ("今回の前提を一つ確認します" if preflight.get("question") else "必要になったときだけ判断を返します"))
+    print("送信する範囲: プロジェクト内の関連ファイル " + str(len(context_files)) + "件")
+    print("送信しないもの: プロジェクト外、秘密情報候補、既存の作業帳")
     if previous:
-        print("  前の仕事を引き継ぐ: " + previous["label"])
+        print("前の頁から続ける: " + previous["label"])
 
 
 def _confirm_context(context_files):
     while True:
-        choice = input("Enterで開始、vで送信範囲、nで中止> ").strip().casefold()
+        choice = input("Enterで作業帳を開く、vで送信範囲、nで中止> ").strip().casefold()
         if choice in ("", "y", "yes", "start"):
             return True
         if choice in ("n", "no", "q", "quit"):
@@ -189,7 +182,7 @@ def _confirm_context(context_files):
             else:
                 print("  自動選択できる小さなテキストファイルはありません。プロジェクト文脈だけを使います。")
             continue
-        print("Enterで開始、vで一覧、nで中止を選んでください。")
+        print("Enterで作業帳を開く、vで一覧、nで中止を選んでください。")
 
 
 def _new_work(root, configuration, mode, previous=None, request=None):
@@ -485,35 +478,90 @@ def _newsletter(root, configuration, work=None):
     print("公開・配信は行っていません。")
 
 
-def _direct_command(root, configuration, mode, value):
-    command = value.strip().split(maxsplit=1)[0].casefold()
-    if command in ("/quit", "/exit"):
+def _notebook_index():
+    print("\n--- ノートの索引 ----------------------------------------------")
+    print("コマンドを覚える必要はありません。次の言葉を、そのままノートに書けます。")
+    print("  これまでの仕事を見る     過去の候補と続きを開く")
+    print("  学習ノートを開く         後から身につける理解と委譲を開く")
+    print("  残した資産を見る         判断、検査、失敗事例を読む")
+    print("  判断と証拠を見る         人間の判断、AIの仮定、UNKNOWNを確認する")
+    print("  送信範囲を見る           次の作業でAIに渡るファイルを確認する")
+    print("  設定を見る               Cleanroomの通常設定を確認する")
+    print("  ローカル要約を作る       今回までの記録をまとめる")
+    print("  終了                     ノートを閉じる")
+    print("? でもこの索引を開けます。")
+
+
+def _notebook_intent(value):
+    normalized = value.strip().rstrip("。！？!?").casefold()
+    phrases = {
+        "これまでの仕事を見る": "history",
+        "仕事を見る": "history",
+        "履歴を見る": "history",
+        "学習ノートを開く": "learn",
+        "学習を見る": "learn",
+        "理解を見る": "learn",
+        "残した資産を見る": "assets",
+        "資産を見る": "assets",
+        "判断と証拠を見る": "decisions",
+        "判断を見る": "decisions",
+        "証拠を見る": "decisions",
+        "送信範囲を見る": "scope",
+        "送るファイルを見る": "scope",
+        "設定を見る": "settings",
+        "設定を確認する": "settings",
+        "ローカル要約を作る": "export",
+        "要約を作る": "export",
+        "操作一覧": "index",
+        "使い方": "index",
+        "?": "index",
+        "終了": "quit",
+        "終わる": "quit",
+        "やめる": "quit",
+        "/history": "history",
+        "/learn": "learn",
+        "/assets": "assets",
+        "/decisions": "decisions",
+        "/details": "decisions",
+        "/scope": "scope",
+        "/settings": "settings",
+        "/mode": "settings",
+        "/export": "export",
+        "/digest": "export",
+        "/help": "index",
+        "/quit": "quit",
+        "/exit": "quit",
+    }
+    return phrases.get(normalized)
+
+
+def _notebook_action(root, configuration, mode, action):
+    if action == "quit":
         return True
-    if command == "/help":
-        print("/history 仕事と候補を見る · /learn 学習と委譲 · /assets 保存した資産 · /scope 送信範囲")
-        print("/decisions 判断と証拠を見る · /settings 設定 · /mode 資産化方針 · /export ローカル要約 · /quit 終了")
-    elif command == "/history":
+    if action == "index":
+        _notebook_index()
+    elif action == "history":
         _work_detail(root, configuration, mode)
-    elif command in ("/learn", "/assets"):
+    elif action in ("learn", "assets"):
         _dictionary(root, configuration)
-    elif command in ("/decisions", "/details"):
+    elif action == "decisions":
         print("仕事を選ぶと、人間の判断、AIの仮定、証拠、UNKNOWNを確認できます。")
         _work_detail(root, configuration, mode)
-    elif command == "/scope":
+    elif action == "scope":
         files = _context_files(root)
+        print("\n--- Cleanroomの送信範囲 --------------------------------------")
         print("通常の送信範囲: 現在のプロジェクト内のみ")
         print("秘密情報候補とプロジェクト外は送信しません。")
         for path in files:
             print("  " + path)
-    elif command == "/mode":
-        print("通常モード: 重要な判断・検証・失敗・理解だけを裏側で資産化します。")
-    elif command == "/settings":
+    elif action == "settings":
+        print("\n--- Cleanroomの設定 ------------------------------------------")
         print("通常設定: プロジェクト内のみ / 候補を隔離保存 / 本体への採用は明示確認後 / 学習は作業後に短く表示")
         print("詳細設定: verantyx setup --guided")
-    elif command in ("/export", "/digest"):
+    elif action == "export":
         _newsletter(root, configuration)
     else:
-        print("その操作はありません。/help で確認できます。")
+        _notebook_index()
     return False
 
 
@@ -524,34 +572,35 @@ def _friendly_error(error):
         print("通常はファイルを選ぶ必要はありません。依頼だけを入力すれば、Veraがプロジェクト内の関連ファイルを選びます。")
     elif code in ("BRIDGE_START_FAILED", "BRIDGE_PROCESS_FAILED", "CODEX_CALL_FAILED"):
         print("AIへの接続を開始できませんでした。保存済みの判断と作業履歴は失われていません。")
-        print("接続設定を確認するには /settings を使ってください。")
+        print("接続設定は「設定を見る」とノートに書いて確認できます。")
     else:
         print("この仕事はまだ開始していません。必要な情報を確認してから、同じ依頼をもう一度送れます。")
-        print("詳細な状態は /details から確認できます。")
+        print("詳細な状態は「判断と証拠を見る」とノートに書いて確認できます。")
 
 
 def interact(root, configuration, onboarding=False):
     mode = "assisted"
     if onboarding:
-        print("\nVera")
+        print("\nVera / Cleanroom Notebook")
         print("AIに作らせても、開発者であることまで手放さない。")
-        print("\n" + Path(root).name + " を検出しました")
+        print("\n" + Path(root).name + " をCleanroomとして開きます")
         print("  読み取り  このプロジェクト内だけ")
         print("  書き込み  隔離された候補にだけ行う")
         print("  本体採用  あなたの確認後")
-        print("  記録      判断・検査・失敗・学びをローカル保存")
+        print("  記録      判断・検査・失敗・学びを作業帳へ残す")
         choice = input("\nEnterで共同開発を始める、dで詳細を見る> ").strip().casefold()
         if choice == "d":
-            print("外部AIは候補を作り、Veraは本体へ入れる前に検証します。重要な判断だけを人間へ戻し、経験はローカルに残します。")
-    print("\nVera · " + Path(root).name)
-    print("候補のみ / 本体未変更 / ローカル台帳ON  ·  /help で管理操作")
+            print("AIはCleanroomの外に候補を書きます。あなたが採用したものだけが本体に入ります。判断・検査・失敗・理解は、モデルではなくローカルの作業帳に残ります。")
+    print("\nVera / " + Path(root).name + " の作業ノート")
+    print("Cleanroomは未変更  |  AIは候補帳に書く  |  ? でノートの索引")
     while True:
         try:
-            request = _ask("何を一緒に進めますか？")
+            request = _ask("ノートに書く")
             if not request:
                 return {"ok": True, "command": "develop", "status": "CLOSED"}
-            if request.startswith("/"):
-                if _direct_command(root, configuration, mode, request):
+            intent = _notebook_intent(request)
+            if intent:
+                if _notebook_action(root, configuration, mode, intent):
                     return {"ok": True, "command": "develop", "status": "CLOSED"}
                 continue
             _new_work(root, configuration, mode, request=request)
