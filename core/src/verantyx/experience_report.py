@@ -77,6 +77,13 @@ def report(root, configuration, run_id, locale="ja"):
         raise LedgerError("ARGUMENTS")
     with EventStore(root, configuration["project"]["id"]) as store:
         snapshot = store.project_snapshot()
+    return from_snapshot(snapshot, configuration, run_id, locale)
+
+
+def from_snapshot(snapshot, configuration, run_id, locale="ja"):
+    """Project a caller-owned validated snapshot without opening another store."""
+    if not valid_id(run_id) or type(locale) is not str or locale not in BOUNDARIES:
+        raise LedgerError("ARGUMENTS")
     recorded = next((row for row in snapshot["states"] if row["run_id"] == run_id), None)
     if recorded is None:
         raise LedgerError("RUN_NOT_FOUND")

@@ -24,6 +24,7 @@ def parse(argv):
     common.add_argument("--lang")
     common.add_argument("--project", default=".")
     common.add_argument("--json", action="store_true")
+    common.add_argument("--plain", action="store_true")
     common.add_argument("--tutorial", action="store_true")
     common.add_argument("--version", action="store_true")
     common.add_argument("-h", "--help", action="store_true")
@@ -32,6 +33,10 @@ def parse(argv):
     sub = parser.add_subparsers(dest="command", parser_class=Parser)
     for command in ("tutorial", "status", "config", "doctor"):
         sub.add_parser(command, add_help=False, allow_abbrev=False)
+    watcher = sub.add_parser("watch", add_help=False, allow_abbrev=False)
+    watcher.add_argument("run_id", nargs="?")
+    watcher.add_argument("--run", dest="watch_run")
+    watcher.add_argument("--once", action="store_true")
     starter = sub.add_parser("start", add_help=False, allow_abbrev=False)
     starter.add_argument("--adapter")
     starter.add_argument("--editor-adapter")
@@ -122,7 +127,7 @@ def parse(argv):
         # A normal agent accepts `verantyx "do this work"` without requiring
         # users to learn a verb before their first task. Flags still retain the
         # strict command parser and are never guessed as a request.
-        if rest and all(not value.startswith("-") for value in rest):
+        if rest and rest[0] != "watch" and all(not value.startswith("-") for value in rest):
             args = argparse.Namespace(command="develop", request=" ".join(rest), input=None,
                                       origin_project=None, capture_mode="assisted", key=None, include=[],
                                       target=None, expect=[], reject_json=[], continue_from=None,
@@ -411,10 +416,21 @@ def main(argv=None):
             except (config.ConfigError, OSError):
                 pass
             help_text(locale, as_json)
+            if not as_json:
+                print("\nCleanroom: verantyx | verantyx \"your task\" | verantyx watch [run-id]")
+                print("Tab/arrow keys/Enter: menu. --plain: scrollback UI. watch --once --json: read-only snapshot.")
             return 0
         existing, expected = config.load(root)
         if existing is not None and not options.lang:
             locale = existing["ui"]["locale"]
+        if args.command == "watch":
+            if existing is None:
+                raise LedgerError("NOT_CONFIGURED")
+            if args.run_id and args.watch_run and args.run_id != args.watch_run:
+                raise config.ConfigError("ARGUMENTS")
+            from .cleanroom_tui import watch
+            return watch(root, existing, run_id=args.watch_run or args.run_id,
+                         once=args.once, as_json=as_json, plain=options.plain)
         if args.command == "setup":
             if existing is not None:
                 from .authority import command_scope
@@ -435,13 +451,18 @@ def main(argv=None):
             if existing is None:
                 config.save(root, config.defaults(root, locale), expected)
                 existing, expected = config.load(root)
-            from .development_console import interact
+            from .terminal_ui import capable_terminal
+            if not options.plain and capable_terminal():
+                from .cleanroom_tui import interact
+            else:
+                from .development_console import interact
             result = interact(root, existing, onboarding=onboarding)
             return 0 if result.get("ok", True) else 4
         if args.command == "start":
             if existing is None:
                 raise LedgerError("NOT_CONFIGURED")
             from .console import start
+            args.plain = args.plain or options.plain
             return start(root, existing, locale, args, as_json)
         if existing is None and args.command == "develop" and args.request:
             config.save(root, config.defaults(root, locale), expected)
@@ -454,9 +475,21 @@ def main(argv=None):
                     raise LedgerError("INTERACTIVE_REQUIRED")
                 # Wait for input outside the global command lock. Each selected
                 # mutation enters the normal authority gate independently.
-                from .development_console import interact
+                from .terminal_ui import capable_terminal
+                if not options.plain and capable_terminal():
+                    from .cleanroom_tui import interact
+                else:
+                    from .development_console import interact
                 result = interact(root, existing)
                 return 0 if result.get("ok", True) else 4
+            if args.command == "develop" and args.request and not args.input and not options.plain and not as_json:
+                from .terminal_ui import capable_terminal
+                explicit = any(getattr(args, name, None) for name in (
+                    "key", "include", "target", "expect", "reject_json", "continue_from", "assumption", "allow_contested_handoff"))
+                if capable_terminal() and not explicit:
+                    from .cleanroom_tui import interact
+                    result = interact(root, existing, initial_request=args.request)
+                    return 0 if result.get("ok", True) else 4
             from .application import dispatch
             result = dispatch(root, existing, args, locale)
             kernel_output(result, locale, as_json, args.command)

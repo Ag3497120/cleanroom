@@ -4,6 +4,7 @@ import os
 import uuid
 
 from .errors import LedgerError
+from .cleanroom_io import current as owner_io, console_print as print
 
 
 def _key():
@@ -21,6 +22,8 @@ def _mutate(root, configuration, operation, *args, **kwargs):
 
 
 def _ask(prompt, default=""):
+    if owner_io.get() is not None:
+        return owner_io.get().ask(prompt, default)
     value = input(prompt + (" [" + default + "]" if default else "") + "> ").strip()
     return value or default
 
@@ -38,6 +41,9 @@ def _pick(title, rows, label):
     if not rows:
         print(title + ": まだ記録がありません。")
         return None
+    if owner_io.get() is not None:
+        selected = owner_io.get().choose(title, [(index, label(row)) for index, row in enumerate(rows)])
+        return None if selected is None else rows[selected]
     print("\n" + title)
     for i, row in enumerate(rows, 1):
         print(str(i) + ". " + visible(label(row)))
@@ -169,7 +175,7 @@ def _show_start_plan(context_files, preflight, previous=None):
 
 def _confirm_context(context_files):
     while True:
-        choice = input("Enterで作業帳を開く、vで送信範囲、nで中止> ").strip().casefold()
+        choice = _ask("Enterで作業帳を開く、vで送信範囲、nで中止").casefold()
         if choice in ("", "y", "yes", "start"):
             return True
         if choice in ("n", "no", "q", "quit"):

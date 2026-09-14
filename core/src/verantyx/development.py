@@ -403,6 +403,12 @@ def work_summaries(root, configuration):
     from .assets import project_assets
     with EventStore(root, configuration["project"]["id"]) as store:
         snapshot = store.project_snapshot()
+    return work_summaries_from_snapshot(snapshot)
+
+
+def work_summaries_from_snapshot(snapshot):
+    """Navigation and receipts can share one ledger revision with live panes."""
+    from .assets import project_assets
     activity, recorded_at = {}, {}
     for sequence, event in enumerate(snapshot["events"], 1):
         activity[event["stream_id"]] = sequence
