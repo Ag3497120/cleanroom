@@ -50,7 +50,7 @@ def exclusive(root, name):
 
 class Journal:
     def __init__(self, root, name, project_id):
-        require(name in ("authority", "writers"), "ARGUMENTS")
+        require(name in ("authority", "writers", "skill-policies"), "ARGUMENTS")
         self.root, self.name, self.project_id = Path(root), name, project_id
         self.path = directory(root) / (name + ".db")
 

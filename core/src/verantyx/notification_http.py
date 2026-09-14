@@ -50,9 +50,14 @@ def deliver(value):
     configuration = validate_connection(value["connection"])
     _require(type(value["timeout"]) is int and 1 <= value["timeout"] <= 60)
     _require(type(value["delivery_id"]) is str and bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}", value["delivery_id"])))
-    from verantyx.domain.events import timestamp
-    timestamp(value["expires_at"])
-    expires = datetime.strptime(value["expires_at"], "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=timezone.utc)
+    # This is an isolated delivery worker.  It must not import the project
+    # event schema (and its model-side dependencies) merely to validate one
+    # timestamp.  Keep the worker runnable with only the standard library.
+    _require(type(value["expires_at"]) is str)
+    try:
+        expires = datetime.strptime(value["expires_at"], "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=timezone.utc)
+    except ValueError:
+        raise LedgerError("BRIDGE_CONFIG", {"reason": "NOTIFICATION_CONNECTION"}) from None
     raw = canonical({"format": "verantyx.notification.v1", "delivery_id": value["delivery_id"], "packet": value["packet"]}).encode()
     _require(len(raw) <= 65536)
     headers = {"Content-Type": "application/json", "Accept-Encoding": "identity", "Idempotency-Key": value["delivery_id"]}

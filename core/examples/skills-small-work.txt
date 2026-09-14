@@ -1,0 +1,34 @@
+SYNTHETIC EXAMPLE ONLY. NO COMMANDS OR TESTS WERE EXECUTED.
+
+Source project: small-retry-client
+Task: Introduce a retry limit without changing the enabled flag.
+
+Human request:
+Keep enabled unchanged. Limit retry attempts to three.
+
+AI proposal:
+Use a retry_limit option and check attempts before starting another request.
+
+Human judgment:
+Represent retry_limit as an integer, not a string. Keep the existing enabled
+condition separate from the retry counter to avoid changing user intent.
+
+Reason:
+A string value can be accepted by configuration parsing but compared incorrectly.
+A retry limit is not permission to turn a disabled feature on.
+
+Proposed verification:
+When enabled is false, no request should run.
+When enabled is true, count how many attempts are started.
+Check zero, one, and three as boundary values.
+
+Potential failure example:
+An off-by-one condition can start a fourth request. This is a hypothetical
+failure to retain as a counterexample, not an observed test failure.
+
+Learning intention:
+I want to own the reasoning about boundaries and review retry behavior.
+Routine application of an already-reviewed pattern may be delegated only
+within its explicit conditions.
+
+This document is source material, not authorization to edit or execute code.

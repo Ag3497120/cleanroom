@@ -17,7 +17,7 @@ EDIT_FORMAT = "verantyx.editor-request.v1"
 
 def _identity(command, role):
     from .jobs import _executor_fingerprint
-    model = command.get("model_api") or {}
+    model = command.get("model_api") or command.get("codex_cli") or {}
     return {"role": role, "adapter_sha256": _executor_fingerprint(command),
             "provider": model.get("provider", "local"), "model": model.get("model", "unspecified")}
 
@@ -31,6 +31,10 @@ def separate_models(proposer, editor):
     if a.get("model_api") and b.get("model_api"):
         keys = ("provider", "model", "endpoint")
         require(tuple(a["model_api"][k] for k in keys) != tuple(b["model_api"][k] for k in keys), "EDITOR_ROLE_COLLISION")
+    if a.get("codex_cli") and b.get("codex_cli"):
+        # Separate roles may use the same requested model. Their recorded
+        # provider/model identities remain equal, not independent evidence.
+        require(a["codex_cli"]["role"] != b["codex_cli"]["role"], "EDITOR_ROLE_COLLISION")
     return a, b
 
 

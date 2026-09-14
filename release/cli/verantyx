@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+if [ ! -x "$ROOT/.venv/bin/python" ]; then
+    printf '%s\n' 'Run install.command in this extracted bundle first.' >&2
+    exit 1
+fi
+export VERANTYX_CROSS="$ROOT/bin/cross"
+export PYTHONDONTWRITEBYTECODE=1
+# Isolated Python imports cannot be replaced by project-local modules.
+# Normal Vera project/scope/authority gates still own every effect.
+exec "$ROOT/.venv/bin/python" -I -c 'from verantyx.cli import main; raise SystemExit(main())' "$@"

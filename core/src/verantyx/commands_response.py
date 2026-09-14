@@ -20,6 +20,7 @@ def register(sub):
     ask.add_argument("--proposal-only", action="store_true")
     ask.add_argument("--max-repairs", type=int, choices=(0, 1, 2), default=1)
     ask.add_argument("--auto-check", action="store_true")
+    ask.add_argument("--economy", action="store_true")
     ask.add_argument("--execute-candidate", action="store_true")
     ask.add_argument("--precedent")
     ask.add_argument("--check-rounds", type=int, choices=(1, 2, 3), default=2)
@@ -35,6 +36,7 @@ def register(sub):
     dictionary.add_argument("query", nargs="?")
     dictionary.add_argument("--run", dest="run_id")
     dictionary.add_argument("--limit", type=int, default=24)
+    dictionary.add_argument("--view", choices=("all", "learn", "delegate"), default="all")
     template = sub.add_parser("asset-template", add_help=False, allow_abbrev=False)
     template.add_argument("asset_id")
     template.add_argument("--claim", required=True)
@@ -51,9 +53,11 @@ def dispatch(root, configuration, args, locale):
                    include_paths=args.include, locale=locale,
                    context={key: getattr(args, key) for key in ("component", "workload", "risk")},
                    reuse_assets=not args.without_assets, timeout=args.timeout, continue_from=args.continue_from,
-                   original_request=args.original_request, editor_adapter=args.editor_adapter, max_repairs=args.max_repairs,
+                   original_request=args.original_request, editor_adapter=args.editor_adapter,
+                   max_repairs=0 if getattr(args, "economy", False) else args.max_repairs,
                    auto_check=args.auto_check, check_rounds=args.check_rounds, max_checks=args.max_checks,
-                   execute_candidate=args.execute_candidate, precedent_path=args.precedent, proposal_only=args.proposal_only)
+                   execute_candidate=args.execute_candidate, precedent_path=args.precedent, proposal_only=args.proposal_only,
+                   economy=getattr(args, "economy", False))
     if args.command == "respond":
         return compose(root, configuration, args.run_id, adapter_path=args.adapter, key=args.key,
                        expected_revision=args.expected_revision, locale=locale, timeout=args.timeout,
@@ -65,8 +69,15 @@ def dispatch(root, configuration, args, locale):
     with EventStore(root, configuration["project"]["id"]) as store:
         if args.command == "dictionary":
             state = get_projection(store, args.run_id)["state"] if args.run_id else None
+            view = getattr(args, "view", "all")
+            if view == "all":
+                catalog = project_catalog(store, state, locale, query=args.query, limit=args.limit)
+            else:
+                from .ownership_dictionary import project_ownership_dictionary
+                catalog = project_ownership_dictionary(store, state, locale, query=args.query,
+                                                       view=view, limit=args.limit)
             return {"schema_version": 1, "ok": True, "command": args.command,
-                    "catalog": project_catalog(store, state, locale, query=args.query, limit=args.limit)}
+                    "catalog": catalog}
         value = verification_template_from_asset(store, args.asset_id, claim_id=args.claim, target_path=args.target,
                                                 oracle_source_refs=args.oracle_source_ref, reproduces=args.reproduces)
     if args.output:
@@ -97,19 +108,34 @@ def display(result, locale, command):
     elif command == "dictionary":
         print(text(locale, "response.dictionary"))
         catalog = result["catalog"]
+        from .ownership_dictionary import LABELS, item_lines
+        labels = LABELS[locale]
+        print(visible(catalog.get("boundary", "")))
+        print(labels["boundary"])
+        split = catalog.get("view") in ("learn", "delegate")
+        if split:
+            print(labels[catalog["view"]])
+            print(labels["placement"])
         # The catalog remains structured JSON for automation; show only the
         # compact, human-readable fields in the ordinary dictionary view.
-        for section in ("rules", "verification_methods", "execution_methods", "failure_cases", "reuse_candidates", "learning"):
+        sections = ("rules", "verification_methods", "execution_methods", "failure_cases", "reuse_candidates", "learning")
+        if split:
+            sections = ("learning", *sections[:-1])
+        for section in sections:
             if catalog.get(section):
                 print(text(locale, "response.section." + section))
+                if split and section != "learning":
+                    print(labels["system_reference"])
             for item in catalog.get(section, []):
                 print(visible(str(item.get("title") or item.get("concept") or item.get("name") or item.get("decision_type") or item.get("id"))))
                 for key in ("description", "why_now", "summary"):
                     if item.get(key):
                         print("  " + visible(str(item[key])))
-                print("  " + str(item.get("id", "")))
+                print("  " + visible(item.get("id", "")))
                 if item.get("owner_run"):
                     print("  " + text(locale, "response.owner_run", run=visible(item["owner_run"])))
+                for line in item_lines(item, locale, include_references=split):
+                    print("  " + line)
         if any(catalog.get("truncated", {}).values()):
             print(text(locale, "response.more"))
     else:

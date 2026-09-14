@@ -148,6 +148,10 @@ def _definition(family, plan):
                              **({"input_hash": digest(check["input"])} if "input" in check else {})} for check in checks]
         value["negative_controls"] = [{**_pick(control, ("id", "case_id")), "contract_hash": digest(control)}
                                       for control in spec["negative_controls"]]
+        if family == "ORACLE":
+            from .domain.oracles import SCOPE
+            value.update(method="PYTHON_JSON_IO", scope=SCOPE,
+                         negative_control_scope="PARENT_COMPARATOR_REJECTS_DECLARED_COUNTEREXAMPLE_VALUES")
         return value, digest(spec)
     if family == "COMMAND":
         value = {**_pick(spec, ("effect_class", "targets", "timeout", "max_output")),
@@ -205,6 +209,21 @@ def project_assets(state, locale=None):
                      "reusable_via": "verification_template_from_asset" if family in ("VERIFICATION", "ORACLE") else "execution_template_from_asset",
                      "reuse_requires": ["EXPLICIT_TARGET_BINDING", "CURRENT_OBSERVATIONS", "NEW_PLAN", "NORMAL_PERMISSION_AND_SCOPE_CHECKS"],
                      "prose_entailment": "NOT_ASSESSED", "independence": "NOT_ESTABLISHED"}
+            if family == "ORACLE":
+                # Preserve the recorded execution boundary, not a portable
+                # Python runner or a transferable authorization.
+                asset.update(scope=definition["scope"], target_binding=deepcopy(plan["target"]),
+                             claim_binding=_pick(plan, ("claim_hash", "proposal_hash")),
+                             oracle_source_refs=list(spec["oracle"]["source_refs"]),
+                             engine=deepcopy(plan["engine"]), engine_hash=plan["engine_hash"],
+                             origins=deepcopy(plan["origins"]), outcome_history=deepcopy(outcomes),
+                             portable_execution=False,
+                             remaining="REQUIRES_FRESH_ORACLE_PLAN_AND_SANDBOX",
+                             reuse_requires=["EXPLICIT_TARGET_BINDING", "CURRENT_OBSERVATIONS",
+                                             "EXPLICIT_CLAIM", "REVIEWED_ORACLE_SOURCES",
+                                             "ORIGINAL_ENGINE_IDENTITY", "FRESH_ORACLE_PLAN",
+                                             "AVAILABLE_SANDBOX", "NEW_AUTHORIZATION",
+                                             "NORMAL_PERMISSION_AND_SCOPE_CHECKS"])
             (executions if asset["kind"] == "EXECUTION_METHOD" else methods).append(asset)
             for outcome in outcomes:
                 if outcome["is_failure_case"]:
@@ -236,6 +255,35 @@ def project_assets(state, locale=None):
                                           "checks": deepcopy(validation["structure"]["十字"]["場所"]["+z/面/北"])},
                              "expectation_origin": "MODEL_INTERPRETATION", "prose_entailment": "NOT_ASSESSED",
                              "authority": "REFERENCE_ONLY", "enforcement": "OFF", "reusable_via": "handoff-editor"})
+    # Runtime error captures remain attributed reports, not proof of a model's
+    # reasoning or a reusable execution permission.
+    for capture in state.get("external_captures", []):
+        provenance = capture.get("provenance", {})
+        if provenance.get("provider") != "verantyx" or provenance.get("model") != "none":
+            continue
+        try:
+            report = decode(capture["body"])
+        except LedgerError:
+            continue
+        if type(report) is not dict or report.get("format") != "verantyx.work-recovery.v1":
+            continue
+        summary = report.get("summary")
+        if type(summary) is not dict or summary.get("status") not in ("MODEL_CALL_FAILED", "MODEL_OUTCOME_UNKNOWN"):
+            continue
+        error = summary.get("error")
+        if type(error) is not dict or type(error.get("code")) is not str:
+            continue
+        ref = capture["source_ref"]
+        failures.append({"id": digest({"model_failure_ref": ref}), "kind": "FAILURE_CASE",
+                         "family": "MODEL_CALL", "owner_run": state["run_id"],
+                         "revision": capture["basis_revision"] + 1,
+                         "source_ref": ref, "source_refs": [state["request_ref"], ref],
+                         "title": "モデル処理の失敗・結果不明", "outcome": summary["status"],
+                         "closure": "UNKNOWN", "reason": error["code"],
+                         "error": deepcopy(error), "origin": "ATTRIBUTED_RUNTIME_REPORT",
+                         "case_kind": "REPORTED_PROCESS_FAILURE", "prose_entailment": "NOT_ASSESSED",
+                         "authority": "REFERENCE_ONLY", "enforcement": "OFF",
+                         "automatic_retry": False, "reusable_via": "EXPLICIT_REVIEW_OF_RECORDED_FAILURE"})
     from .external_capture import project_assets as external_assets
     suggestions.extend(external_assets(state))
     return {"verification_methods": methods, "execution_methods": executions, "failure_cases": failures,
@@ -302,10 +350,15 @@ def verification_template_from_asset(store, asset_id, *, claim_id, target_path, 
             raise LedgerError("ARGUMENTS")
         from .domain.oracles import validate_spec
     validate_spec(spec)
-    return {"schema_version": 1, "ok": True, "asset_id": asset["id"], "family": family,
-            "source_refs": asset["source_refs"], "source_contract_hash": asset["contract_hash"],
-            "spec": spec, "spec_hash": digest(spec), "command": "verify-plan" if family == "VERIFICATION" else "oracle-plan",
-            "executed": False, "authority": "REFERENCE_ONLY", "new_target_and_oracle_sources_require_review": True}
+    result = {"schema_version": 1, "ok": True, "asset_id": asset["id"], "family": family,
+              "source_refs": asset["source_refs"], "source_contract_hash": asset["contract_hash"],
+              "spec": spec, "spec_hash": digest(spec), "command": "verify-plan" if family == "VERIFICATION" else "oracle-plan",
+              "executed": False, "authority": "REFERENCE_ONLY", "new_target_and_oracle_sources_require_review": True}
+    if family == "ORACLE":
+        result.update(portable_execution=False, remaining=asset["remaining"],
+                      reuse_requires=list(asset["reuse_requires"]),
+                      source_engine=deepcopy(plan["engine"]), source_engine_hash=plan["engine_hash"])
+    return result
 
 
 def execution_template_from_asset(store, asset_id):

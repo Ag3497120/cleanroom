@@ -194,6 +194,8 @@ class CurrentEditorAttemptTests(unittest.TestCase):
                 self.assertIn(text(locale, "context.AWAITING_EDITOR"), output.getvalue())
                 self.assertNotIn(text(locale, "context.MATCHED"), output.getvalue())
 
+    @unittest.skipUnless(any(VALIDATION.glob("current-attempt-before-*.jsonl")),
+                         "optional v0.6.3 compatibility archives are not present")
     def test_v063_archives_replay_without_external_calls_and_keep_old_answers_historical(self):
         files = sorted(VALIDATION.glob("current-attempt-before-*.jsonl"))
         self.assertEqual(len(files), 4)
@@ -216,6 +218,8 @@ class CurrentEditorAttemptTests(unittest.TestCase):
                     self.assertIn(text("ja", "context.AWAITING_EDITOR"), rendered)
                     self.assertNotIn(text("ja", "context.MATCHED"), rendered)
 
+    @unittest.skipUnless((VALIDATION / "current-attempt-before-same-plan-response.jsonl").is_file(),
+                         "optional v0.6.3 compatibility archive is not present")
     def test_old_successful_answer_can_be_checked_after_assessment_metadata_changes(self):
         from verantyx.responses import _recorded_request, apply_event
         events = parse_archive((VALIDATION / "current-attempt-before-same-plan-response.jsonl").read_bytes())["events"]
@@ -236,6 +240,8 @@ class CurrentEditorAttemptTests(unittest.TestCase):
         self.assertEqual(state["latest_response"]["context_compatibility"], "V063_HANDOFF_HISTORY")
         self.assertEqual(response_freshness(state, "ja"), "CONTEXT_CHANGED")
 
+    @unittest.skipUnless((VALIDATION / "current-attempt-before-same-plan-response.jsonl").is_file(),
+                         "optional v0.6.3 compatibility archive is not present")
     def test_legacy_response_compatibility_rejects_fabricated_history(self):
         events = parse_archive((VALIDATION / "current-attempt-before-same-plan-response.jsonl").read_bytes())["events"]
         pos = max(i for i, event in enumerate(events) if event["type"] == "ResponseComposed")

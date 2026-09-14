@@ -76,6 +76,8 @@ class CurrentAttemptIndependentAudit(unittest.TestCase):
         self.assertEqual(effect["reason"], "CONTEXT_CHANGED")
         self.assertFalse(Path(effect["lease"]["resource_scope"]).exists())
 
+    @unittest.skipUnless((fixtures.VALIDATION / "current-attempt-before-same-plan-response.jsonl").is_file(),
+                         "optional v0.6.3 compatibility archive is not present")
     def test_legacy_comparison_cannot_change_live_gate_or_current_pointer(self):
         events, position = self.legacy()
         state = replay(events[:position])
@@ -96,6 +98,8 @@ class CurrentAttemptIndependentAudit(unittest.TestCase):
             self.assert_error("HANDOFF_REPAIR_REQUIRED", authorize, self.root, self.cfg, "work", "editor-apply",
                               os.environ["VERANTYX_PRECEDENT"], "no-legacy-authorization")
 
+    @unittest.skipUnless((fixtures.VALIDATION / "current-attempt-before-same-plan-response.jsonl").is_file(),
+                         "optional v0.6.3 compatibility archive is not present")
     def test_non_object_response_structure_is_a_domain_error_not_a_crash(self):
         events, position = self.legacy()
         original = events[position]
@@ -108,6 +112,8 @@ class CurrentAttemptIndependentAudit(unittest.TestCase):
                 with mock.patch("subprocess.run", side_effect=AssertionError("replay ran a process")):
                     self.assert_error("STORE_INTEGRITY", replay, [*events[:position], forged])
 
+    @unittest.skipUnless((fixtures.VALIDATION / "current-attempt-before-same-plan-response.jsonl").is_file(),
+                         "optional v0.6.3 compatibility archive is not present")
     def test_legacy_prompt_cannot_upgrade_reply_to_execution_permission(self):
         events, position = self.legacy()
         state = replay(events[:position])

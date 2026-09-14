@@ -65,6 +65,8 @@ class ExpectationBindingTests(unittest.TestCase):
         self.adapter_mode(mode)
         return quoted['state']['external_captures'][0]
 
+    @unittest.skipUnless((Path(__file__).resolve().parents[1] / "validation/live-reference-v071.json").is_file(),
+                         "optional v0.7.1 live reference is not present")
     def test_saved_real_model_error_reproduces_before_new_context_contract(self):
         old = json.loads((Path(__file__).resolve().parents[1]/'validation/live-reference-v071.json').read_text())
         context = old['first_workflow']['plan']['context']
@@ -231,6 +233,8 @@ class ExpectationBindingTests(unittest.TestCase):
         self.assertFalse(second['authority_granted'])
         self.assertEqual(second['workflow']['results'][0]['independence'], 'NOT_ESTABLISHED')
 
+    @unittest.skipUnless((Path(__file__).resolve().parents[1] / "validation/live-reference-v071.json").is_file(),
+                         "optional v0.7.1 live reference is not present")
     def test_v1_saved_binding_recompiles_to_the_original_hash(self):
         old = json.loads((Path(__file__).resolve().parents[1]/'validation/live-reference-v071.json').read_text())
         context = deepcopy(old['first_workflow']['plan']['context'])

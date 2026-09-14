@@ -27,8 +27,13 @@ READ_COMMANDS = {"status", "config", "doctor", "replay", "gaps", "rights", "prop
                  "archives", "rules", "precedents", "learn", "verifications", "oracles", "command-effects", "integration-review", "rule-policy-template", "rule-shadow-report",
                  "learn-material", "learn-due", "jobs", "writers", "authority-status", "authority-history"}
 READ_COMMANDS.add("dictionary")
+READ_COMMANDS.add("skills-stack")
+READ_COMMANDS.update({"skills-policies", "skills-route", "skills", "skills-report"})
 READ_COMMANDS.add("shared-context")
 READ_COMMANDS.add("sovereignty")
+READ_COMMANDS.update(("recap", "codex-usage"))
+READ_COMMANDS.update(("constitution", "constitution-gaps"))
+READ_COMMANDS.add("ownership")
 CANDIDATE_COMMANDS = {"run", "resume"}
 CONTROL_COMMANDS = {"authority-request", "authority-execute"}
 CONTROLLED_WORKER_COMMANDS = {"service-worker"}  # Per-job signed attestation is mandatory in its dispatcher.
@@ -166,8 +171,11 @@ def state(root, configuration):
 def exempt(args):
     command = args.command
     return (command in READ_COMMANDS | CANDIDATE_COMMANDS | CONTROL_COMMANDS | CONTROLLED_WORKER_COMMANDS
+            or (command == "keep" and all(getattr(args, name, None) is None
+                for name in ("learn_candidate", "delegate_candidate", "check_spec")))
             or (command == "work" and not getattr(args, "execute", False) and not getattr(args, "refresh", False))
-            or (command in ("export", "handoff-packet", "verify-template", "asset-template") and not getattr(args, "output", None)))
+            or (command in ("export", "handoff-packet", "verify-template", "asset-template", "skills-newsletter")
+                and not getattr(args, "output", None)))
 
 
 @contextmanager

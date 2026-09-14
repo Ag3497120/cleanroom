@@ -441,7 +441,7 @@ def compose(root, configuration, run_id, *, adapter_path=None, key, expected_rev
 def ask(root, configuration, *, request, adapter_path, key, run_id=None, include_paths=(), locale=None,
         context=None, reuse_assets=True, timeout=60, continue_from=None, original_request=None,
         editor_adapter=None, max_repairs=1, auto_check=False, check_rounds=2, max_checks=4,
-        execute_candidate=False, precedent_path=None, proposal_only=False):
+        execute_candidate=False, precedent_path=None, proposal_only=False, economy=False, response_adapter=None):
     """One resumable user workflow: request -> proposal -> kernel -> answer/assets."""
     from .adapters.invocation_journal import InvocationJournal
     from .adapters.proposal_validation import valid_id
@@ -456,6 +456,7 @@ def ask(root, configuration, *, request, adapter_path, key, run_id=None, include
     require(type(execute_candidate) is bool and (not execute_candidate or (editor_adapter and precedent_path and not auto_check)), "ARGUMENTS")
     require(execute_candidate or precedent_path is None, "ARGUMENTS")
     require(type(proposal_only) is bool and (not proposal_only or (editor_adapter and not execute_candidate and not auto_check)), "ARGUMENTS")
+    require(type(economy) is bool and (not economy or (editor_adapter and max_repairs == 0 and not auto_check)), "ARGUMENTS")
     if editor_adapter:
         from .coordination import separate_models
         separate_models(adapter_path, editor_adapter)
@@ -466,8 +467,12 @@ def ask(root, configuration, *, request, adapter_path, key, run_id=None, include
               "reuse_assets": reuse_assets, "timeout": timeout, "project_id": configuration["project"]["id"]}
     extended_intent = {**intent, "continue_from": continue_from, "original_request": original_request,
                        "editor_adapter": str(editor_adapter) if editor_adapter else None, "max_repairs": max_repairs}
+    if response_adapter is not None:
+        extended_intent["response_adapter"] = str(response_adapter)
     if proposal_only:
         extended_intent["proposal_only"] = True
+    if economy:
+        extended_intent["economy"] = True
     if auto_check:
         extended_intent.update(auto_check=True, check_rounds=check_rounds, max_checks=max_checks)
     if execute_candidate:
@@ -477,7 +482,7 @@ def ask(root, configuration, *, request, adapter_path, key, run_id=None, include
         if started:
             legacy = started.get("workflow_version", 1) == 1
             if legacy:
-                require(continue_from is None and original_request is None and editor_adapter is None and max_repairs == 1
+                require(continue_from is None and original_request is None and editor_adapter is None and response_adapter is None and max_repairs == 1
                         and not auto_check and not execute_candidate, "IDEMPOTENCY_CONFLICT")
             require(started["intent_hash"] == digest(intent if legacy else extended_intent), "IDEMPOTENCY_CONFLICT")
         else:
@@ -492,9 +497,23 @@ def ask(root, configuration, *, request, adapter_path, key, run_id=None, include
         if not legacy:
             base = record_context(root, configuration, started["run_id"], key="ask-context-" + journal.prefix,
                                   expected_revision=base["recorded_revision"], continue_from=continue_from, original_request=original_request)
-        proposed = propose(root, configuration, started["run_id"], adapter_path=adapter_path, key="ask-propose-" + journal.prefix,
-                           expected_revision=base["recorded_revision"], include_paths=include_paths, timeout=timeout,
-                           locale=locale, reuse_assets=reuse_assets)
+        proposal_arguments = dict(key="ask-propose-" + journal.prefix,
+                                  expected_revision=base["recorded_revision"], include_paths=include_paths,
+                                  timeout=timeout, locale=locale, reuse_assets=reuse_assets)
+        if economy:
+            # Use the normal proposal validation and invocation journal without
+            # spending a model call on a second interpretation of the request.
+            import json
+            import sys
+            import tempfile
+            from pathlib import Path
+            with tempfile.TemporaryDirectory(prefix="verantyx-local-proposal-") as temporary:
+                adapter = Path(temporary) / "adapter.json"
+                adapter.write_text(json.dumps({"argv": [sys.executable,
+                    str(Path(__file__).with_name("local_proposal.py").resolve())]}), encoding="utf-8")
+                proposed = propose(root, configuration, started["run_id"], adapter_path=adapter, **proposal_arguments)
+        else:
+            proposed = propose(root, configuration, started["run_id"], adapter_path=adapter_path, **proposal_arguments)
         if editor_adapter:
             from .coordination import coordinate, stage_candidate
             proposed = coordinate(root, configuration, started["run_id"], proposer_adapter=adapter_path,
@@ -520,9 +539,12 @@ def ask(root, configuration, *, request, adapter_path, key, run_id=None, include
                                           include_paths=include_paths, timeout=timeout, max_rounds=check_rounds,
                                           max_checks=max_checks)
             proposed = workflow
-        answer = compose(root, configuration, started["run_id"], adapter_path=adapter_path, key="ask-respond-" + journal.prefix,
+        answer = compose(root, configuration, started["run_id"], adapter_path=None if economy else (response_adapter or adapter_path), key="ask-respond-" + journal.prefix,
                          expected_revision=proposed["recorded_revision"], locale=locale, timeout=timeout, reuse_assets=reuse_assets)
         return {**answer, "command": "ask", "run_id": started["run_id"],
+                **({"model_call_policy": {"mode": "TWO_ROLE_ECONOMY", "max_role_calls": 2,
+                    "initial_proposal": "LOCAL_DETERMINISTIC", "final_summary": "LOCAL_KERNEL",
+                    "repair_rounds": 0, "model_independence": "NOT_ESTABLISHED"}} if economy else {}),
                 **({"work_loop": work["work_loop"], "execution_ok": work["ok"]} if work else {}),
                 **({"asset_workflow": workflow["workflow"], "workflow_id": workflow["workflow_id"],
                     "checks_ok": workflow["ok"]} if workflow else {})}

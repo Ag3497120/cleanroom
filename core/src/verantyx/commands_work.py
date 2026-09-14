@@ -24,10 +24,17 @@ def dispatch(root, configuration, args, locale):
         from .sovereignty import report
         return report(root, configuration)
     from .work_loop import run_candidate
-    return run_candidate(root, configuration, args.run_id, key=args.key, expected_revision=args.expected_revision,
+    result = run_candidate(root, configuration, args.run_id, key=args.key, expected_revision=args.expected_revision,
                          action_id=args.action, execute=args.execute, precedent_path=args.precedent,
                          adapter_path=args.adapter, timeout=args.timeout, locale=locale, refresh=args.refresh,
                          editor_adapter=args.editor_adapter, include_paths=args.include, max_repairs=args.max_repairs)
+    if args.execute or args.refresh:
+        from .recovery_bundle import attach_recovery
+        # ``work`` operates on an existing run, whereas the lower-level work
+        # loop returns a projection without repeating that identity.  Recovery
+        # belongs to the selected recorded run, never to a guessed new one.
+        result = attach_recovery(root, configuration, {**result, "run_id": args.run_id})
+    return result
 
 
 def display_work(outcome, locale):
@@ -58,3 +65,9 @@ def display(result, locale, command):
     from .commands_response import display as display_response
     display_response(result, locale, command)
     display_work(result["work_loop"], locale)
+    bundle = result.get("recovery_bundle")
+    if bundle:
+        from .cli import visible
+        print("判断・学習の回収: " + bundle["status"])
+        if bundle.get("readme"):
+            print(visible(bundle["readme"]))

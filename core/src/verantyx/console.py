@@ -38,7 +38,7 @@ def _selection_path(root, role="proposal"):
 def adapter_info(path):
     path = Path(path).expanduser().resolve()
     command = load_command(path)
-    model = command.get("model_api")
+    model = command.get("model_api") or command.get("codex_cli")
     return {"path": str(path), "sha256": hashlib.sha256(read_document(path, 65536)).hexdigest(),
             "label": (model["provider"] + " / " + model["model"]) if model else path.name}
 
@@ -158,6 +158,17 @@ def recorded_context_run(root, configuration, run_id):
         return None
 
 
+def dictionary_arguments(request):
+    """Keep existing free-text queries; only the explicit view prefix is syntax."""
+    body = request.removeprefix("/dictionary").strip()
+    if body == "--view" or body.startswith("--view "):
+        parts = body.split(None, 2)
+        if len(parts) < 2 or parts[1] not in ("all", "learn", "delegate"):
+            raise LedgerError("ARGUMENTS")
+        return ["dictionary", "--view", parts[1], *([parts[2]] if len(parts) == 3 else [])]
+    return ["dictionary", *([body] if body else [])]
+
+
 def start(root, configuration, locale, args, as_json=False):
     from .cli import emit, kernel_output, visible
     from .terminal_ui import ConsoleUI
@@ -193,6 +204,9 @@ def start(root, configuration, locale, args, as_json=False):
     history, last_run = [], None
     auto_check = bool(getattr(args, "auto_check", False))
     execute_candidate = bool(getattr(args, "execute_candidate", False))
+    economy = bool(getattr(args, "economy", False))
+    if economy and (not editor or auto_check):
+        raise LedgerError("ARGUMENTS")
     if execute_candidate and (not editor or not args.precedent or auto_check):
         raise LedgerError("ARGUMENTS")
     if execute_candidate:
@@ -215,6 +229,8 @@ def start(root, configuration, locale, args, as_json=False):
         try:
             if request == "/help":
                 print(text(locale, "console.help"))
+                from .commands_experience import help_lines
+                print("\n".join(help_lines(locale, interactive=True)))
                 continue
             if request == "/new":
                 history, last_run = [], None
@@ -228,7 +244,7 @@ def start(root, configuration, locale, args, as_json=False):
                     ui.notice(text(locale, "console.checks.flow"))
                 continue
             if request in ("/checks", "/checks on", "/checks off"):
-                if request == "/checks on" and execute_candidate:
+                if request == "/checks on" and (execute_candidate or economy):
                     raise LedgerError("ARGUMENTS")
                 if request != "/checks":
                     auto_check = request.endswith(" on")
@@ -278,6 +294,20 @@ def start(root, configuration, locale, args, as_json=False):
                              "--expected-revision", str(view["state"]["revision"]), "--key", "console-choice-" + uuid.uuid4().hex]
                 kernel_output(_operation(root, locale, arguments), locale, False, command)
                 continue
+            if request == "/keep" or request.startswith("/keep "):
+                from .keep_console import arguments as keep_arguments
+                arguments = keep_arguments(request, last_run)
+                if arguments is None:
+                    print(text(locale, "console.no_task"))
+                else:
+                    kernel_output(_operation(root, locale, arguments), locale, False, "keep")
+                continue
+            if request == "/skills" or request.startswith("/skills "):
+                arguments = ["skills-stack"]
+                if " " in request:
+                    arguments += ["--query", request.split(" ", 1)[1]]
+                kernel_output(_operation(root, locale, arguments), locale, False, "skills-stack")
+                continue
             if request == "/details":
                 ui.details(_operation(root, locale, ["replay", last_run]) if last_run else None)
                 continue
@@ -305,8 +335,18 @@ def start(root, configuration, locale, args, as_json=False):
                 print(text(locale, "console.connected", model=visible(info["label"])))
                 continue
             if request == "/dictionary" or request.startswith("/dictionary "):
-                arguments = ["dictionary"] + ([request.split(" ", 1)[1]] if " " in request else [])
+                arguments = dictionary_arguments(request)
                 kernel_output(_operation(root, locale, arguments), locale, False, "dictionary")
+                continue
+            if request == "/recap" or request.startswith("/recap "):
+                parts = request.split()
+                if len(parts) > 2:
+                    raise LedgerError("ARGUMENTS")
+                selected_run = parts[1] if len(parts) == 2 else last_run
+                if selected_run:
+                    kernel_output(_operation(root, locale, ["recap", selected_run]), locale, False, "recap")
+                else:
+                    print(text(locale, "console.no_task"))
                 continue
             if request == "/learn":
                 if last_run:
@@ -333,6 +373,8 @@ def start(root, configuration, locale, args, as_json=False):
             if auto_check:
                 argv.extend(("--auto-check", "--check-rounds", str(getattr(args, "check_rounds", 2)),
                              "--max-checks", str(getattr(args, "max_checks", 4))))
+            if economy:
+                argv.append("--economy")
             if execute_candidate:
                 argv.extend(("--execute-candidate", "--precedent", args.precedent))
             for field in ("component", "workload", "risk"):
@@ -347,6 +389,8 @@ def start(root, configuration, locale, args, as_json=False):
                 result = _operation(root, locale, argv)
             ui.response(result, activity.elapsed)
             last_run = result["state"]["run_id"]
+            from .keep_console import hint as keep_hint
+            ui.notice(keep_hint(locale))
             answer = result["state"]["latest_response"]["document"]["answer"]
             history.append({"task_id": last_run, "request": request, "assistant_candidate": answer})
             history = history[-4:]

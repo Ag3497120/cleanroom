@@ -13,7 +13,7 @@ import unittest
 import uuid
 
 from verantyx import config
-from verantyx.application import record_run
+from verantyx.application import now, record_run
 from verantyx.adapters.cross_policy import CrossPolicyBackend
 from verantyx.domain.codec import digest
 from verantyx.domain.events import make_event
@@ -47,7 +47,10 @@ class Fixture(unittest.TestCase):
         self.root = Path(self.tmp.name).resolve()
         self.cfg = config.defaults(self.root, "ja")
         config.save(self.root, self.cfg, None)
-        self.time = datetime(2026, 9, 6, tzinfo=timezone.utc)
+        # External bridge workers use their own wall clock.  Keep leases in
+        # the future relative to that process instead of coupling tests to a
+        # calendar date that eventually expires.
+        self.time = now()
         self.clock = lambda: self.time
         self.backend = CrossPolicyBackend()
 

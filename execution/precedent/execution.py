@@ -47,7 +47,9 @@ for path in sys.argv[2:]:
 result=unittest.TextTestRunner(verbosity=2).run(suite)
 sys.exit(0 if result.testsRun>0 and result.wasSuccessful() else 1)
 ''')
-        reads=[str(root.resolve()),str(stage),'/Library/Frameworks/Python.framework','/System','/usr/lib',str(Path(sys.executable).resolve())]+[str(Path(p).resolve()) for p in test_paths]
+        # Resolve the running Python's base runtime; a venv executable alone
+        # does not grant its framework library or standard library access.
+        reads=[str(root.resolve()),str(stage),str(Path(sys.base_prefix).resolve()),'/System','/usr/lib',str(Path(sys.executable).resolve())]+[str(Path(p).resolve()) for p in test_paths]
         policy='(version 1)(deny default)(allow process-exec)(allow sysctl-read)(allow file-read-metadata)(allow file-read* (literal "/") (literal "/dev/null") (literal "/dev/urandom") '+' '.join('(subpath '+json.dumps(p)+')' for p in reads)+')'
         argv=['/usr/bin/sandbox-exec','-p',policy,sys.executable,'-I','-S',str(script),str(root.resolve()),*[str(Path(p).resolve()) for p in test_paths]]
         with tempfile.TemporaryFile() as output:

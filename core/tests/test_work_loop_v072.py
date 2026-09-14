@@ -228,6 +228,7 @@ class WorkLoopTests(unittest.TestCase):
         value = self.command("work", "first", "--key", "cli", "--expected-revision", base["recorded_revision"],
                              "--execute", "--precedent", self.precedent)
         self.assertTrue(value["ok"])
+        self.assertEqual(value["recovery_bundle"]["status"], "SAVED")
         class Terminal(io.StringIO):
             def isatty(self):
                 return True

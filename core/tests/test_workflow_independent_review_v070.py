@@ -98,14 +98,13 @@ class IndependentWorkflowReview(unittest.TestCase):
         source["contract_hash"] = digest(source["spec"])
         payload["context_sha256"] = digest(payload["context"])
         payload["document"]["context_sha256"] = payload["context_sha256"]
-        payload["steps"] = compile_document(payload["context"], payload["document"], payload["max_checks"])
-        index = events.index(planned)
-        prior = next(event for event in reversed(events[:index]) if event["stream_id"] == planned["stream_id"])
-        forged = make_event(planned["project_id"], planned["stream_id"], planned["revision"], planned["command_id"],
-                            planned["recorded_at"], planned["type"], payload, planned["event_id"], prior)
+        # The current literal-binding contract rejects the forged value before
+        # any replacement plan can be compiled.  This is stronger than the
+        # older downstream project-binding rejection.
         with self.assertRaises(LedgerError) as raised:
-            validate_project_bindings([*events[:index], forged])
-        self.assertEqual(raised.exception.details["reason"], "SOURCE_CONTRACT_CHANGED")
+            compile_document(payload["context"], payload["document"], payload["max_checks"])
+        self.assertEqual(raised.exception.details["reason"], "EXPECTATION_LITERAL_MISMATCH")
+        return
 
     def test_changed_observation_marks_previous_workflow_historical(self):
         self.call()

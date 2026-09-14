@@ -11,6 +11,7 @@ import re
 import secrets
 import signal
 import ssl
+import sys
 import time
 from urllib.parse import urlsplit
 
@@ -316,7 +317,7 @@ class Gateway:
 
     def adapter_profile(self, model, node="primary"):
         if model["provider"]=="codex":
-            return {"argv":[self.cfg.get("python","/usr/local/bin/python3"),str(ROOT/"spark_adapter.py")]}
+            return {"argv":[self.cfg.get("python",sys.executable),str(ROOT/"spark_adapter.py")]}
         return {"format":"verantyx.model-api.v1","provider":"ollama","model":model["name"],"endpoint":self.endpoints[node]+"/api/chat","key_env":None,
                 "allow_loopback_http":True,"timeout":180,"max_output_tokens":8192,"max_response_bytes":262144,"thinking":False,"context_window":32768}
 
@@ -325,7 +326,7 @@ class Gateway:
         project=self.directory/"projects"/hashlib.sha256(job["subject"].encode()).hexdigest()
         project.mkdir(parents=True,exist_ok=True,mode=0o700)
         cli=CANON/"bin/verantyx"
-        base=[self.cfg.get("python","/usr/local/bin/python3"),cli,"--project",project,"--lang",job["body"]["locale"],"--json"]
+        base=[self.cfg.get("python",sys.executable),cli,"--project",project,"--lang",job["body"]["locale"],"--json"]
         if not (project/".verantyx/config.json").exists():
             code,_,_=await bounded_process(base+["setup","--non-interactive","--name","Web workspace","--purpose","AI assistance","--learning","manual","--max-items","1"],timeout=30)
             if code: raise Refused("WORKSPACE_SETUP_FAILED")

@@ -278,7 +278,8 @@ def _plan_document(command, context, started, journal, timeout, before_invoke, f
 
 def run_asset_workflow(root, configuration, run_id, *, adapter_path=None, key, expected_revision=None,
                        include_paths=(), timeout=60, max_rounds=2, max_checks=4, execute=True,
-                       clock=now, fault=None, before_invoke=None, reuse_asset=None, claim_id=None, target_path=None):
+                       clock=now, fault=None, before_invoke=None, reuse_asset=None, claim_id=None, target_path=None,
+                       expected_context_hash=None):
     """One bounded loop; retries repair planning only, never executed failures.
 
     Invocation markers are written before calling a model. An uncertain call is
@@ -306,6 +307,10 @@ def run_asset_workflow(root, configuration, run_id, *, adapter_path=None, key, e
               "max_rounds": max_rounds, "max_checks": max_checks, "execute": execute}
     if explicit:
         intent["explicit_reuse"] = {"asset_id": reuse_asset, "claim_id": claim_id, "target_path": target_path}
+    if expected_context_hash is not None:
+        if type(expected_context_hash) is not str or len(expected_context_hash) != 64:
+            raise LedgerError("ARGUMENTS")
+        intent["expected_context_sha256"] = expected_context_hash
     with InvocationJournal(root, "asset-workflow", key) as journal:
         started = journal.read("started")
         if started is not None and started["intent_hash"] != digest(intent):
@@ -314,6 +319,8 @@ def run_asset_workflow(root, configuration, run_id, *, adapter_path=None, key, e
             with EventStore(root, configuration["project"]["id"]) as store:
                 project_revision = store.project_revision()
                 context = _context(root, store, run_id, paths, executor, exact_asset_id=reuse_asset)
+                if expected_context_hash is not None and digest(context) != expected_context_hash:
+                    raise LedgerError("ASSET_WORKFLOW_STALE", {"reason": "EXPECTED_CONTEXT_CHANGED"})
                 if ((expected_revision is not None and expected_revision != context["basis_revision"])
                         or store.project_revision() != project_revision):
                     raise LedgerError("REVISION_CONFLICT")

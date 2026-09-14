@@ -57,7 +57,9 @@ def _child_command(stage, function):
     python = str(Path(sys.executable).resolve())
     # No project root, spec, home, ledger, site packages, inherited environment,
     # file writes, network, process fork, signal or Mach task access is granted.
-    reads = [str(stage), "/Library/Frameworks/Python.framework", "/System", "/usr/lib", python]
+    # The selected interpreter's runtime may be a Homebrew framework. Allow
+    # its resolved base installation, not the project-local virtualenv/home.
+    reads = [str(stage), str(Path(sys.base_prefix).resolve()), "/System", "/usr/lib", python]
     policy = ('(version 1)(deny default)(allow process-exec)(allow sysctl-read)(allow file-read-metadata)'
               '(allow file-read* (literal "/") (literal "/dev/null") (literal "/dev/urandom") '
               + ' '.join('(subpath ' + json.dumps(path) + ')' for path in reads) + ')')

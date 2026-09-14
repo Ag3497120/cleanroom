@@ -37,6 +37,7 @@ def parse(argv):
     starter.add_argument("--editor-adapter")
     starter.add_argument("--max-repairs", type=int, choices=(0, 1, 2), default=1)
     starter.add_argument("--auto-check", action="store_true")
+    starter.add_argument("--economy", action="store_true")
     starter.add_argument("--execute-candidate", action="store_true")
     starter.add_argument("--precedent")
     starter.add_argument("--component", default="UNSPECIFIED")
@@ -161,7 +162,9 @@ def guide(locale, as_json=False):
 
 
 def help_text(locale, as_json=False):
+    from .commands_experience import help_lines
     value = "\n\n".join(text(locale, key) for key in ("slogan", "usage", "commands", "options", "phase"))
+    value += "\n\n" + "\n".join(help_lines(locale))
     if as_json:
         emit({"schema_version": 1, "command": "help", "locale": locale, "text": value})
     else:
@@ -420,6 +423,14 @@ def main(argv=None):
         if args.command not in (None, "status", "config", "doctor"):
             if existing is None:
                 raise LedgerError("NOT_CONFIGURED")
+            if args.command == "develop" and not args.request and not args.input:
+                if as_json or not sys.stdin.isatty() or not sys.stdout.isatty():
+                    raise LedgerError("INTERACTIVE_REQUIRED")
+                # Wait for input outside the global command lock. Each selected
+                # mutation enters the normal authority gate independently.
+                from .development_console import interact
+                result = interact(root, existing)
+                return 0 if result.get("ok", True) else 4
             from .application import dispatch
             result = dispatch(root, existing, args, locale)
             kernel_output(result, locale, as_json, args.command)

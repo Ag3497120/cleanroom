@@ -25,6 +25,9 @@ def load_command(path):
     if type(value) is dict and value.get("format") == "verantyx.model-api.v1":
         from ..model_api import command_for
         return command_for(path, value)
+    if type(value) is dict and value.get("format") == "verantyx.codex-cli.v1":
+        from ..codex_cli import command_for
+        return command_for(path, value)
     if type(value) is not dict or not {"argv"} <= set(value) <= {"argv", "cwd", "env", "inherit_env"}:
         raise LedgerError("BRIDGE_CONFIG")
     argv = value["argv"]
@@ -153,7 +156,7 @@ class BoundedProcess:
                     raise LedgerError("BRIDGE_OUTPUT_LIMIT")
                 if key.data == "stdout":
                     self.stdout.extend(raw)
-                elif self.command.get("model_api"):
+                elif self.command.get("model_api") or self.command.get("codex_cli"):
                     self._model_observation(raw)
                 # Other stderr counts toward the bound, but is never returned or stored.
 

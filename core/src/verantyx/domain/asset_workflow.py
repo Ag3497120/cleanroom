@@ -341,7 +341,7 @@ def validate_project_bindings(events):
                 candidates[row["id"]] = row
 
 
-def compile_document(context, document, max_checks):
+def compile_document(context, document, max_checks, *, _legacy_reuse_bindings=False):
     """Deterministically bind an untrusted response to host-selected inputs."""
     _fields(document, ("format", "context_sha256", "steps", "unresolved"))
     require(document["format"] == PLAN_FORMAT and document["context_sha256"] == digest(context), "CONTEXT_CHANGED")
@@ -397,6 +397,7 @@ def compile_document(context, document, max_checks):
             raise LedgerError("ASSET_WORKFLOW_INVALID", {"reason": "MODE_UNSUPPORTED"})
         validate_spec(spec)
         bindings = None
+        current_reuse_binding = False
         if context.get("expectation_binding_version") in (1, 2):
             if step["mode"] == "COMPILE":
                 bindings = expectation_bindings(context, spec["checks"], refs, step["target_path"])
@@ -404,6 +405,20 @@ def compile_document(context, document, max_checks):
                     spec["provenance"]["oracle"] = ("MODEL_PROPOSED_ALL_LITERAL_BOUND_NOT_INDEPENDENT"
                                                     if context["expectation_binding_version"] == 2 else
                                                     "MODEL_PROPOSED_LITERAL_BOUND_NOT_INDEPENDENT")
+            elif (not _legacy_reuse_bindings and context["expectation_binding_version"] == 2
+                  and spec["provenance"]["oracle"] in (
+                    "MODEL_PROPOSED_LITERAL_BOUND_NOT_INDEPENDENT",
+                    "MODEL_PROPOSED_ALL_LITERAL_BOUND_NOT_INDEPENDENT")):
+                # A historical literal binding does not establish the current
+                # requirement. Rebind every unchanged predicate to current
+                # request/reference/requirement text, never the check target.
+                # Selection can cite only the old method; the host records the
+                # actual current sources without another model call.
+                current_refs = [row["source_ref"] for row in _expectation_sources(context)
+                                if row["path"] != step["target_path"]]
+                bindings = expectation_bindings({**context, "expectation_binding_version": 2},
+                                                spec["checks"], current_refs, step["target_path"])
+                current_reuse_binding = True
             elif spec["provenance"]["oracle"] == "MODEL_PROPOSED_NOT_INDEPENDENT":
                 # Old unbound model proposals remain historical contracts, not
                 # approved goals. Automatic selection must cite a current
@@ -423,6 +438,10 @@ def compile_document(context, document, max_checks):
                        "independence": "NOT_ESTABLISHED", "prose_entailment": "NOT_ASSESSED"})
         if bindings is not None:
             result[-1]["expectation_bindings"] = bindings
+        if current_reuse_binding:
+            # Host-produced only: absent from the closed model response shape.
+            # Markerless stored steps retain their original replay semantics.
+            result[-1]["current_requirement_binding_version"] = 1
     return result
 
 
@@ -474,7 +493,11 @@ def validate_payload(kind, payload):
             validate_spec(row["spec"])
             require(digest(row["spec"]) == row["contract_hash"], "SOURCE_CONTRACT_CHANGED")
             hash_value(row["source_event_hash"])
-        require(canonical(compile_document(context, payload["document"], payload["max_checks"])) == canonical(payload["steps"]), "COMPILED_SPEC_CHANGED")
+        require(type(payload["steps"]) is list)
+        legacy_reuse = not any(type(step) is dict and "current_requirement_binding_version" in step
+                               for step in payload["steps"])
+        require(canonical(compile_document(context, payload["document"], payload["max_checks"],
+                                           _legacy_reuse_bindings=legacy_reuse)) == canonical(payload["steps"]), "COMPILED_SPEC_CHANGED")
         require(type(payload["rejected"]) is list and len(payload["rejected"]) <= payload["max_rounds"])
         for index, row in enumerate(payload["rejected"], 1):
             _fields(row, ("round", "code", "reason", "response_sha256"))

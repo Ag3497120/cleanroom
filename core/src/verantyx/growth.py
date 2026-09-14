@@ -70,6 +70,29 @@ def failure_candidates(state):
     rows = sorted(project_assets(state)["failure_cases"], key=lambda item: item["revision"], reverse=True)
     candidates = []
     for row in rows:
+        if row["family"] == "MODEL_CALL":
+            concept = "work.model-failure"
+            reason = row.get("reason", "UNKNOWN")
+            candidates.append({
+                "id": "work-" + digest({"source": row["source_ref"], "concept": concept})[:32],
+                "concept_id": concept,
+                "concept": "AIの失敗と結果不明を区別し、二重実行を防ぐ" if locale == "ja"
+                           else "Distinguish failed and uncertain AI calls before retrying",
+                "why_now": [reason], "project_anchor": row["source_ref"],
+                "source_refs": row["source_refs"], "ownership_target": "REVIEW",
+                "target_is_suggestion": True, "mastery_evidence": "NONE",
+                "system_capture": ["REFERENCE"],
+                "minimum_model": ("AI処理の停止理由は " + reason
+                    + " です。未採用の応答と、外部で処理されなかったことは同じではありません。"
+                    if locale == "ja" else "Recorded failure: " + reason
+                    + ". An unusable response does not establish that the external operation never happened."),
+                "counterexample": ("同じ依頼を無条件で再送し、重複処理や使用量を増やす。"
+                    if locale == "ja" else "Blindly retrying an uncertain call duplicates effects or usage."),
+                "check": ("記録から確定できることと、不明なことを一つずつ挙げてください。"
+                    if locale == "ja" else "Name one established fact and one unknown in this failure record."),
+                "assessment": None,
+            })
+            continue
         if row["family"] == "HANDOFF":
             from .i18n import text
             candidates.append({"id": digest({"anchor": row["source_ref"], "concept": "handoff_fidelity"}),
