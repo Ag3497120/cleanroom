@@ -524,7 +524,7 @@ def _model_name(prompt, available=(), unavailable=None):
     if not value:
         return None
     if value == unavailable:
-        print("作成役と検証役には、異なるモデルまたは異なる接続先が必要です。")
+        print("Creator and reviewer need different models or different endpoints.")
         return None
     return value
 
@@ -534,22 +534,22 @@ def _configure_model_api(root, configuration, preset_name):
     preset = _MODEL_PRESETS[preset_name]
     print("\n--- " + preset["title"] + " ----------------------------------------")
     if preset["key_env"]:
-        print("APIキーは入力・保存しません。シェルの " + preset["key_env"] + " だけを利用します。")
+        print("Vera never asks for or stores an API key. It reads " + preset["key_env"] + " only when calling this provider.")
     else:
-        print("この接続ではAPIキーを保存しません。ローカルサーバーだけを使います。")
+        print("No API key is stored. This connection is intended for a local server.")
     endpoint = preset["endpoint"]
     if preset_name == "openai_compatible":
-        endpoint = _ask("ローカルサーバーのURL", endpoint).strip() or endpoint
-        print("/v1/responses または /v1/chat/completions を提供するサーバーを指定してください。")
+        endpoint = _ask("Local server URL", endpoint).strip() or endpoint
+        print("Use a server that exposes /v1/responses or /v1/chat/completions.")
     available = model_settings.ollama_models() if preset_name == "ollama" else []
     if available:
-        print("このMacで見つかったOllamaモデル")
+        print("Ollama models found on this Mac")
         for index, model in enumerate(available, 1):
             print("  " + str(index) + ". " + model)
-    creator = _model_name("作成役のモデル名" + (" または番号" if available else ""), available)
+    creator = _model_name("Creator model" + (" or number" if available else ""), available)
     if creator is None:
         return
-    reviewer = _model_name("検証役の別モデル名" + (" または番号" if available else ""), available, creator)
+    reviewer = _model_name("Reviewer model (different)" + (" or number" if available else ""), available, creator)
     if reviewer is None:
         return
     creator_endpoint = endpoint.format(model=creator) if "{model}" in endpoint else endpoint
@@ -563,36 +563,78 @@ def _configure_model_api(root, configuration, preset_name):
             key_env=preset["key_env"], allow_loopback_http=preset["loopback"],
         )
     except (LedgerError, OSError) as error:
-        print("モデル設定を保存できませんでした。接続先、モデル名、または現在の設定を確認してください。")
+        print("Model settings could not be saved. Check the endpoint, model name, or current settings.")
         if getattr(error, "code", "") == "ROLE_COLLISION":
-            print("同じ外部モデルを二役に使うことはできません。検証役には別モデルを選んでください。")
+            print("The same external model cannot fill both roles. Choose a different reviewer model.")
         return
-    print("作業ノートのAIを設定しました: " + saved["selection"]["label"])
-    print("次の依頼から、この作成役と検証役を使います。")
+    print("Saved for this Cleanroom: " + saved["selection"]["label"])
+    print("The next request will use this creator and reviewer pair.")
+
+
+def _settings_hub(root, configuration):
+    from .model_settings import describe
+    while True:
+        current = describe(configuration)
+        print("\n╭─ CLEANROOM SETTINGS ───────────────────────────────────────")
+        print("│ Active model: " + current["label"])
+        print("│ Project files stay sealed until you explicitly adopt a candidate.")
+        print("├────────────────────────────────────────────────────────────")
+        print("│ 1. Models & Providers   Choose proposal and review engines")
+        print("│ 2. Workspace            View local context and candidate scope")
+        print("│ 3. Boundary             Review what AI may and may not change")
+        print("│ 4. Notebook             Review learning and retained assets")
+        print("│ 5. Advanced             Open the detailed project setup")
+        print("│ 0. Back to Notebook")
+        print("╰────────────────────────────────────────────────────────────")
+        choice = _ask("Select").strip().casefold()
+        if choice in ("", "0", "back"):
+            return
+        if choice == "1":
+            _model_settings(root, configuration)
+        elif choice == "2":
+            print("\nWORKSPACE")
+            print("Cleanroom root: " + str(Path(root).resolve()))
+            print("Context: project-local related files only")
+            print("Excluded: secrets, project-external paths, prior notebooks")
+            print("Candidates: isolated Vera work records")
+        elif choice == "3":
+            print("\nBOUNDARY")
+            print("Read project context → write an isolated candidate → human adoption")
+            print("A model response cannot grant itself permission, evidence, or a project change.")
+        elif choice == "4":
+            print("\nNOTEBOOK")
+            print("After work, Vera retains Project Delta, System Delta, and Human Delta.")
+            print("Learning is visible debt, not a gate that blocks safe work.")
+        elif choice == "5":
+            print("Advanced setup remains explicit: verantyx setup --guided")
+        else:
+            print("Choose a numbered setting or 0 to return to the notebook.")
 
 
 def _model_settings(root, configuration):
     from . import model_settings
     while True:
         current = model_settings.describe(configuration)
-        print("\n--- モデルの設定 ----------------------------------------------")
-        print("現在のAI: " + current["label"])
-        print("モデルの応答は候補です。Cleanroomへの採用、判断、検証はVera側に残ります。")
-        print("1. ChatGPT Codexサブスクリプションを使う")
-        print("2. Ollamaのローカルモデルを使う")
-        print("3. OpenAI APIを使う")
-        print("4. Anthropic APIを使う")
-        print("5. Gemini APIを使う")
-        print("6. OpenAI互換のローカルサーバーを使う")
-        print("7. 既定のCodex接続へ戻す")
-        print("0. 作業ノートへ戻る")
-        choice = _ask("選ぶ").strip()
-        if choice in ("", "0", "戻る"):
+        print("\n╭─ MODELS & PROVIDERS ───────────────────────────────────────")
+        print("│ Active: " + current["label"])
+        print("│ Model output is a candidate. Cleanroom adoption and evidence remain in Vera.")
+        print("├────────────────────────────────────────────────────────────")
+        print("│ 1. ChatGPT Codex Subscription")
+        print("│ 2. Ollama Local Models")
+        print("│ 3. OpenAI API")
+        print("│ 4. Anthropic API")
+        print("│ 5. Gemini API")
+        print("│ 6. OpenAI-Compatible Local Server")
+        print("│ 7. Restore the Default Codex Connection")
+        print("│ 0. Back to Cleanroom Settings")
+        print("╰────────────────────────────────────────────────────────────")
+        choice = _ask("Select").strip().casefold()
+        if choice in ("", "0", "back"):
             return
         try:
             if choice == "1":
                 saved = model_settings.activate_codex(root, configuration)
-                print("作業ノートのAIを設定しました: " + saved["selection"]["label"])
+                print("Saved for this Cleanroom: " + saved["selection"]["label"])
             elif choice == "2":
                 _configure_model_api(root, configuration, "ollama")
             elif choice == "3":
@@ -605,11 +647,11 @@ def _model_settings(root, configuration):
                 _configure_model_api(root, configuration, "openai_compatible")
             elif choice == "7":
                 model_settings.clear(root, configuration)
-                print("既定のCodex接続へ戻しました。")
+                print("Restored the default Codex connection.")
             else:
-                print("番号を選ぶか、0で作業ノートへ戻ってください。")
+                print("Choose a numbered provider or 0 to return to Cleanroom Settings.")
         except (LedgerError, OSError):
-            print("モデル設定を保存できませんでした。現在のCleanroom設定は変更していません。")
+            print("Model settings could not be saved. The existing Cleanroom configuration is unchanged.")
 
 
 def _notebook_index():
@@ -619,7 +661,7 @@ def _notebook_index():
     print("  学習ノートを開く         後から身につける理解と委譲を開く")
     print("  残した資産を見る         判断、検査、失敗事例を読む")
     print("  判断と証拠を見る         人間の判断、AIの仮定、UNKNOWNを確認する")
-    print("  モデルを設定する         AIの接続先と作成役・検証役を選ぶ")
+    print("  モデルを設定する         Open Cleanroom Settings and choose providers")
     print("  送信範囲を見る           次の作業でAIに渡るファイルを確認する")
     print("  設定を見る               Cleanroomの通常設定を確認する")
     print("  ローカル要約を作る       今回までの記録をまとめる")
@@ -696,9 +738,7 @@ def _notebook_action(root, configuration, mode, action):
     elif action == "models":
         _model_settings(root, configuration)
     elif action == "settings":
-        print("\n--- Cleanroomの設定 ------------------------------------------")
-        print("通常設定: プロジェクト内のみ / 候補を隔離保存 / 本体への採用は明示確認後 / 学習は作業後に短く表示")
-        print("詳細設定: verantyx setup --guided")
+        _settings_hub(root, configuration)
     elif action == "export":
         _newsletter(root, configuration)
     else:

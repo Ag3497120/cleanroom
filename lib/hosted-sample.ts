@@ -12,15 +12,15 @@ export function hostedSample(terminal: Terminal, status: (text: string) => void)
   let drawing = false;
   let anchor: number | null = null;
   let output = [
-    cyan('✣  VERANTYX') + '  ' + record.runtime_version,
-    '一度決めた方針を、次のAI作業にも。',
+    cyan('✣  VERA') + '  CLEANROOM NOTEBOOK  ' + record.runtime_version,
+    'AI can prepare work. You decide what enters the project.',
     '',
-    dim('表示サンプル · AI未接続 · 入力は保存されません'),
-    '/help 操作案内  ·  /demo 記録した実行例',
-    '実際の作業は、手元で同じ画面を開くと利用できます。',
+    dim('Preview workspace · AI disconnected · no notebook is written'),
+    'Settings (upper right)  ·  /demo recorded work  ·  /help preview guide',
+    'The local CLI owns real model connections and project records.',
     '',
   ];
-  status('表示サンプル · AI未接続');
+  status('Preview workspace · AI disconnected');
   terminal.write('\x1b[?2004h');
   const draw = () => {
     if (closed) return;
@@ -46,8 +46,8 @@ export function hostedSample(terminal: Terminal, status: (text: string) => void)
           if (i < editor.value.length) prompt += editor.value[i] === '\n' ? '\r\n  · ' : editor.value[i];
         }
         prompt += '\r\n' + dim(editor.completion ? '  ' + editor.completion + '  (Enterで確定)' : ' ');
-        prompt += '\r\n' + dim('Enter 送信 · Ctrl+J 改行 · ↑↓ 履歴 · Tab 補完 · Ctrl+C 中断');
-        prompt += '\r\n' + dim('表示サンプル · ' + editor.text.split('\n').length + '行 · ' + Array.from(editor.text).length + '文字') + '\x1b8';
+        prompt += '\r\n' + dim('Enter send · Ctrl+J newline · ↑↓ history · Tab complete · Ctrl+C cancel');
+        prompt += '\r\n' + dim('Preview · ' + editor.text.split('\n').length + ' lines · ' + Array.from(editor.text).length + ' characters') + '\x1b8';
         terminal.write(prompt, () => { drawing = false; if (pending) draw(); });
       });
     });
@@ -57,11 +57,11 @@ export function hostedSample(terminal: Terminal, status: (text: string) => void)
     output.push(cyan('❯ ') + text.replace(/\n/g, '\r\n  · '));
     switch (text.trim()) {
       case '/help':
-        output.push('入力: Enter 送信、Ctrl+J / Alt+Enter 改行、↑↓ 履歴、Tab 補完、Ctrl+C 中断。',
-          '複数行の貼り付けは一つの下書きになります。Enterで送信します。',
-          '表示サンプル: /demo 実行例 · /dictionary 残る方針 · /learn 学ぶ項目 · /flow 流れ',
-          '実際のCLIのコマンド: ' + COMMANDS.join(' '),
-          'このサイトは表示サンプルです。モデル・プロジェクトへの接続はローカル起動で行います。'); break;
+        output.push('Preview input: Enter sends, Ctrl+J / Alt+Enter adds a line, ↑↓ recalls, Tab completes, Ctrl+C cancels.',
+          'Open Settings in the upper right or with ⌘, to explore the Cleanroom configuration.',
+          'Preview commands: /demo recorded work · /dictionary retained rules · /learn learning note · /flow route',
+          'Local CLI commands: ' + COMMANDS.join(' '),
+          'This hosted surface does not connect a model, read a project, or store a secret.'); break;
       case '/demo':
         output.push(dim('記録した検査の例 · テスト用生成器 · 実モデルの呼び出しなし'),
           '1. 「並行する作業は別フォルダで進める」と一度判断。',
@@ -86,11 +86,11 @@ export function hostedSample(terminal: Terminal, status: (text: string) => void)
         output.push('依頼 → 既存の方針を確認 → 提案 → 必要な判断 → 別のモデルで編集 → 検査',
           '→ 結果と根拠を記録 → 再利用する方針 / 本人が学ぶ項目',
           '本体への採用は、CLIにある採用の操作で行います。'); break;
-      case '/status': case '/model': case '/editor':
-        output.push('表示サンプル · AI未接続 · 保存先なし',
-          'ローカル起動時は、既存のCLIがプロジェクトと提案・編集モデルの設定を読み込みます。'); break;
-      case '/new': output = [cyan('✣  VERANTYX'), dim('表示サンプル · AI未接続'), '']; break;
-      case '/quit': output.push('表示サンプルの入力を消しました。タブを閉じると終了します。'); break;
+      case '/settings': case '/status': case '/model': case '/editor':
+        output.push('Open the Settings button in the upper right.',
+          'Models, Workspace, Boundary, and Notebook are previewed there. Real settings stay local to the CLI.'); break;
+      case '/new': output = [cyan('✣  VERA') + '  CLEANROOM NOTEBOOK', dim('Preview workspace · AI disconnected'), '']; break;
+      case '/quit': output.push('The preview input was cleared. Closing this tab ends the preview.'); break;
       default:
         output.push('入力を受け取りました。このサイトは表示サンプルのため、作業は実行していません。',
           '手元のCLIへ接続した画面では、この入力がそのままVerantyxへ渡ります。');
