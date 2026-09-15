@@ -120,12 +120,28 @@ def dispatch(root, configuration, args, locale):
         if canonical(supplied) != canonical(expected):
             from .errors import LedgerError
             raise LedgerError("CONSTITUTION_STALE_OR_FOREIGN")
-    request = args.request + "\n\nHost-provided project constitution (context only; not permission or proof):\n" + canonical(task_gate["constitution"])
+    from .work_output import split_owner_context, TASK_FORMAT
+    original_request, owner_references = split_owner_context(args.request)
+    request = original_request
+    supplemental = {}
+    constitution_context = task_gate["constitution"]
+    # An unset constitution is not an unresolved requirement. Keep actual
+    # project constraints, but do not ask the models to invent missing ones.
+    if (constitution_context.get("purpose") or constitution_context.get("human_owned_decisions")
+            or constitution_context.get("non_negotiables")):
+        supplemental["project_constitution"] = constitution_context
+    if owner_references is not None:
+        supplemental["owner_references"] = owner_references
     if contract:
         from .domain.codec import canonical
         request += "\nExplicit acceptance conditions supplied with the request: " + canonical({
             "target": args.target, "expressions": args.expect, "negative_inputs": args.reject_json})
         request += "\nReturn only the file at the exact project-relative target path. Preserve unrelated fields. Do not use absolute file paths."
+    # The existing context envelope binds current_request exactly. Metadata is
+    # retained separately instead of becoming dozens of apparent instructions.
+    original_request = request
+    if supplemental:
+        request = canonical({"format": TASK_FORMAT, "current_request": original_request, **supplemental})
     require(not args.execute or (args.mode == "implement" and args.precedent),
             "PARTNER_EXECUTION_REQUIRES_PRECEDENT")
     require(args.execute or args.precedent is None, "PARTNER_UNUSED_PRECEDENT")
@@ -137,7 +153,7 @@ def dispatch(root, configuration, args, locale):
         adapter_path=args.reviewer_adapter if args.mode == "implement" else args.creator_adapter,
         response_adapter=args.reviewer_adapter, key=args.key, run_id=run_id,
         include_paths=args.include, locale=locale, timeout=args.timeout,
-        continue_from=args.continue_from, original_request=request,
+        continue_from=args.continue_from, original_request=original_request,
         editor_adapter=args.creator_adapter if args.mode == "implement" else None,
         max_repairs=0, execute_candidate=args.execute, precedent_path=args.precedent,
         economy=args.mode == "implement",

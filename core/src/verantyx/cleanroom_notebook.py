@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Mapping, Sequence
+from .cleanroom_io import console_print as print
 
 
 def _field(value: Any, name: str, default: Any = None) -> Any:
@@ -107,6 +108,11 @@ def render_notebook_index() -> None:
 
 
 def render_project_map(root: str, configuration: Any, context_files: Sequence[str]) -> None:
+    from .owner_notebook import show_project
+    return show_project(root, configuration, context_files)
+
+
+def _legacy_render_project_map(root: str, configuration: Any, context_files: Sequence[str]) -> None:
     print("\n╭─ PROJECT MAP ───────────────────────────────────────────────")
     print("│ Project: " + Path(root).name)
     print("│ Current connection: " + _model_label(configuration))
@@ -125,6 +131,11 @@ def render_project_map(root: str, configuration: Any, context_files: Sequence[st
 
 
 def render_review_queue(root: str, configuration: Any) -> None:
+    from .owner_notebook import open_notebook
+    return open_notebook(root, configuration)
+
+
+def _legacy_render_review_queue(root: str, configuration: Any) -> None:
     print("\n╭─ REVIEW QUEUE ──────────────────────────────────────────────")
     print("│ " + Path(root).name)
     print("│")
@@ -148,6 +159,9 @@ def render_review_queue(root: str, configuration: Any) -> None:
 
 
 def render_work_receipt(root: str, result: Any) -> None:
+    if _field(result, "work") is not None:
+        from .owner_notebook import show_receipt
+        return show_receipt(root, result)
     print("\n╭─ CLEANROOM RECEIPT ─────────────────────────────────────────")
     print("│ Work: " + _result_label(result))
     print("│ State: " + _result_status(result))

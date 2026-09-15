@@ -51,10 +51,12 @@ def validate(value: dict) -> None:
             raise ValueError()
         if type(learning["max_items"]) is not int or not 1 <= learning["max_items"] <= 3:
             raise ValueError()
-        if type(runtime) is not dict or runtime.get("backend") != "none" or set(runtime) not in (
-            {"backend"}, {"backend", "model_selection"}
-        ):
+        if (type(runtime) is not dict or runtime.get("backend") != "none"
+                or not {"backend"} <= set(runtime) <= {"backend", "model_selection", "reflection"}):
             raise ValueError()
+        if "reflection" in runtime:
+            from .agent_models import validate_setting
+            validate_setting(runtime["reflection"])
         selection = runtime.get("model_selection")
         if selection is not None:
             if type(selection) is not dict or set(selection) != {

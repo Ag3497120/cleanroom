@@ -303,6 +303,9 @@ def response_text(provider, result):
 
 
 def _validate_output(value, result):
+    from verantyx.agent_schema import FORMATS, validate_output
+    if value.get("format") in FORMATS:
+        return validate_output(value, result)
     if value.get("format") == "verantyx.asset-workflow-request.v1":
         # Preserve a returned planning candidate so its exact rejection can be
         # recorded and repaired within the workflow's limit. The host validates
@@ -353,7 +356,8 @@ def request(config, value, observer=None):
     """Perform exactly one POST. Call inside BoundedProcess for a wall-time cap."""
     validate_config(config)
     _require(type(value) is dict and value.get("format") in ("verantyx.proposal-request.v1", "verantyx.learning-request.v1", "verantyx.response-request.v1",
-             "verantyx.handoff-plan-request.v1", "verantyx.editor-request.v1", "verantyx.asset-workflow-request.v1"),
+             "verantyx.handoff-plan-request.v1", "verantyx.editor-request.v1", "verantyx.asset-workflow-request.v1",
+             "verantyx.work-agent-request.v1", "verantyx.reflection-request.v1"),
              "MODEL_API_REQUEST_FORMAT", "BRIDGE_PROTOCOL")
     # Keep generation-schema property order: interpretations must be generated
     # before relations/cases that refer to them. Canonical hashing of recorded

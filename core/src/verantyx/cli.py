@@ -119,6 +119,11 @@ def parse(argv):
     register(sub)
     from .commands_v04 import register as register_v04
     register_v04(sub)
+    organize = sub.add_parser("organize", help="Organize recorded work with the selected Reflection AI")
+    organize.add_argument("run_id")
+    organize.add_argument("--adapter", help="Explicit adapter override for this organization run")
+    organize.add_argument("--key")
+    organize.add_argument("--timeout", type=int, default=120)
     if options.help or options.version:
         return options, argparse.Namespace(command=None)
     try:
@@ -301,6 +306,10 @@ def kernel_output(result, locale, as_json, command):
         emit(result)
         return
     from .commands_v04 import handler
+    if command == "organize":
+        from .agent_console import show_result
+        show_result(".", result)
+        return
     extension = handler(command)
     if extension is not None:
         if command in ("verify-plan", "verify-run") and result.get("verification"):

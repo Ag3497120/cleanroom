@@ -29,7 +29,7 @@ MAX_INPUT = 512 * 1024
 FIELDS = {"format", "provider", "model", "reasoning_effort", "role", "executable",
           "budget_directory", "max_calls", "timeout", "max_input_bytes", "max_response_bytes"}
 REQUEST_FORMATS = tuple("verantyx." + name + "-request.v1" for name in
-                        ("proposal", "learning", "response", "handoff-plan", "editor", "asset-workflow"))
+                        ("proposal", "learning", "response", "handoff-plan", "editor", "asset-workflow", "work-agent", "reflection"))
 ENVELOPE = {"type": "object", "properties": {"document": {"type": "string"}},
             "required": ["document"], "additionalProperties": False}
 INSTRUCTIONS = (
@@ -105,16 +105,19 @@ def _invoke(config, value, on_usage):
     """Bound both pipes and wall time; the child stays in the outer adapter group."""
     from verantyx.codex_wire import EDITOR, PLAN, RESPONSE, editor_contract, plan_contract, response_contract, validate_envelope
     from verantyx.codex_wire import is_skill_proposal, skill_proposal_contract
+    from verantyx.agent_schema import FORMATS as AGENT_FORMATS, native_contract
+    agent_wire = value["format"] in AGENT_FORMATS
     editor_wire = value["format"] == EDITOR
     plan_wire = value["format"] == PLAN
     response_wire = value["format"] == RESPONSE
     skill_wire = is_skill_proposal(value)
-    wire_value, envelope_schema = (editor_contract(value) if editor_wire else
+    wire_value, envelope_schema = (native_contract(value) if agent_wire else
+                                   editor_contract(value) if editor_wire else
                                    plan_contract(value) if plan_wire else
                                response_contract(value) if response_wire else
                                skill_proposal_contract(value) if skill_wire else (value, ENVELOPE))
     instructions = INSTRUCTIONS
-    if editor_wire or plan_wire or response_wire or skill_wire:
+    if agent_wire or editor_wire or plan_wire or response_wire or skill_wire:
         instructions = instructions.replace("one string field document containing the complete contract JSON",
                                             "one object field document containing the complete contract JSON")
     prompt = (instructions + "\nConfigured role: " + config["role"] + "\nREQUEST_JSON\n" + canonical(wire_value)).encode()
@@ -201,7 +204,7 @@ def _invoke(config, value, on_usage):
                 raise LedgerError("BRIDGE_PROCESS_FAILED", {"reason": reason, "returncode": returncode})
             _require(completed and final is not None, "CODEX_INCOMPLETE_TURN", "BRIDGE_OUTCOME_UNKNOWN")
             envelope = decode(final, config["max_response_bytes"])
-            if editor_wire or plan_wire or response_wire or skill_wire:
+            if agent_wire or editor_wire or plan_wire or response_wire or skill_wire:
                 return validate_envelope(envelope, envelope_schema, editor=editor_wire,
                                          source_request=value if plan_wire or editor_wire else None)
             _require(type(envelope) is dict and set(envelope) == {"document"}

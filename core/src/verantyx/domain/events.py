@@ -45,6 +45,10 @@ from .asset_workflow import EVENT_ACTORS as WORKFLOW_ACTORS
 ACTORS.update(WORKFLOW_ACTORS)
 from ..external_capture import EVENT_ACTORS as CAPTURE_ACTORS
 ACTORS.update(CAPTURE_ACTORS)
+from .work import EVENT_ACTORS as WORK_ACTORS
+ACTORS.update(WORK_ACTORS)
+from .owner_experience import EVENT_ACTORS as OWNER_EXPERIENCE_ACTORS
+ACTORS.update(OWNER_EXPERIENCE_ACTORS)
 ENVELOPE = {"schema_version", "event_id", "project_id", "stream_id", "revision", "command_id",
             "recorded_at", "type", "actor_kind", "causation_id", "prev_hash", "payload", "event_hash"}
 
@@ -136,7 +140,13 @@ def validate_event(event):
         hash_value(event["event_hash"])
         payload = event["payload"]
         kind = event["type"]
-        if kind in WORKFLOW_ACTORS:
+        if kind in OWNER_EXPERIENCE_ACTORS:
+            from .owner_experience import validate_payload
+            validate_payload(kind, payload)
+        elif kind in WORK_ACTORS:
+            from .work import validate_payload
+            validate_payload(kind, payload)
+        elif kind in WORKFLOW_ACTORS:
             from .asset_workflow import validate_payload
             validate_payload(kind, payload)
         elif kind in CAPTURE_ACTORS:

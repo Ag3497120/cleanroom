@@ -113,6 +113,71 @@ def _rows(title, rows, render, empty="まだ記録されていません。", lim
     return lines + [""]
 
 
+def operation_message(status):
+    """Plain-language operation results, separate from kernel assessments."""
+    return {
+        "BLOCKED": "処理を保留しました。成功・採用済みではありません。",
+        "RESPONSE_SAVED": "回答候補をローカルに保存しました。内容の正しさは未検証です。",
+        "CANDIDATE_SAVED": "変更候補を保存しました。本体への採用とは別です。",
+        "DECISION_REQUIRED": "人間に残された判断を待っています。",
+        "UNKNOWN_CONTEXT": "進めるための文脈が足りず、保留しています。",
+        "HANDOFF_REPAIR_REQUIRED": "依頼の解釈が一致せず、通常の受け渡し条件を満たしていません。Evidenceで不一致点を確認できます。",
+        "PATH_SCOPE": "選択した場所はプロジェクトの範囲外です。範囲内のファイルを選ぶか、対象フォルダで起動し直してください。",
+        "WORK_FILE_COUNT": "候補ファイル数が対応範囲外です。1回の候補は最大16ファイルです。",
+        "WORK_RESPONSE_EMPTY": "AIから回答本文も変更候補も返りませんでした。完了として扱いません。",
+        "WORK_OUTPUT_INVALID": "依頼された回答の形式・本文・出典の条件を満たしていません。回答済みとして保存せず、原記録を残しました。",
+        "WORK_RESPONSE_PENDING": "回答本文を受信しました。出典との照合と保存はまだ完了していません。",
+        "WORK_READONLY_FILES": "読む・分類する依頼に変更ファイルが返りました。本体への変更や採用には進めません。",
+        "READONLY_ALTERNATIVES_RETAINED": "代替解釈の文章に差が残っています。読むための回答候補のみ保存し、解釈の一致や実行許可とは扱いません。",
+        "CROSS_UNAVAILABLE": "Cross実行ファイルがないため、ホスト側の有限照合を使用しています。Cross VM実行済みではありません。",
+        "MODEL_CALL_FAILED": "モデル呼び出しに失敗しました。回答の取得には至っていません。",
+        "MODEL_OUTCOME_UNKNOWN": "モデル呼び出しの結果を確定できません。重複を避けるため自動で再送しません。",
+    }.get(str(status), str(status))
+
+
+def _recorded_outcome(state):
+    """Display the current attempt without granting delivery or adoption rights."""
+    if not state.get("editor_attempt"):
+        return None
+    from .shared_context import current_editor_attempt
+    try:
+        attempt = current_editor_attempt(state)
+    except LedgerError:
+        return {"status": "STALE", "message": "現在の計画に結び付く回答候補を確認できません。過去の候補を完成扱いしません。",
+                "answer": None, "source_ref": None, "mismatch_ids": []}
+    if attempt is None:
+        return {"status": "STALE", "message": "現在の計画に結び付く回答候補を確認できません。",
+                "answer": None, "source_ref": None, "mismatch_ids": []}
+    validation = attempt.get("validation") or {}
+    document = attempt.get("document") or {}
+    status = validation.get("status", "NOT_RECORDED")
+    value = {"status": status, "source_ref": attempt.get("source_ref"),
+             "mismatch_ids": list(validation.get("mismatch_ids") or []), "answer": None}
+    from .work_output import recorded_output
+    saved = recorded_output(state)
+    if saved and saved.get("status") == "WORK_OUTPUT_INVALID":
+        return {**value, "status": "WORK_OUTPUT_INVALID", "message": operation_message("WORK_OUTPUT_INVALID"),
+                "issues": saved.get("output_check", {}).get("issues", [])}
+    if (saved and saved.get("status") == "RESPONSE_SAVED" and not document.get("files")
+            and saved.get("output_check", {}).get("valid") and saved.get("answer")):
+        message = operation_message("RESPONSE_SAVED")
+        if (saved.get("handoff") or {}).get("reason") == "READONLY_ALTERNATIVES_RETAINED":
+            message += " " + operation_message("READONLY_ALTERNATIVES_RETAINED")
+        return {**value, "status": "RESPONSE_READY", "message": message, "answer": saved["answer"]}
+    if status == "MATCHED":
+        if document.get("files"):
+            value.update(status="CANDIDATE_READY", message="変更候補を受信しました。保存・検査・採用の成否は別の記録です。")
+        elif document.get("response"):
+            value.update(status="WORK_RESPONSE_PENDING", message=operation_message("WORK_RESPONSE_PENDING"))
+        else:
+            value.update(status="WORK_OUTPUT_INVALID", message="旧形式の作業メモしか記録されていません。回答本文とは認定しません。")
+    elif status == "REPAIR_REQUIRED":
+        value.update(message=operation_message("HANDOFF_REPAIR_REQUIRED"))
+    else:
+        value.update(message="回答・候補の受け渡しは未確定です。完了や採用として扱いません。")
+    return value
+
+
 def project_view(snapshot, configuration, selected=None, owner_notes=()):
     """Pure display data. No prose is promoted into authorization or evidence."""
     from .development import work_summaries_from_snapshot
@@ -127,7 +192,7 @@ def project_view(snapshot, configuration, selected=None, owner_notes=()):
             "project_revision": snapshot["project_revision"], "revision": 0,
             "as_of": snapshot["as_of"], "writes": False, "model_calls": 0,
             "state": state, "works": works, "receipt": None, "related_receipts": [],
-            "events": [], "assumptions": [], "candidates": [], "question": None,
+            "events": [], "assumptions": [], "candidates": [], "question": None, "outcome": None,
             "recorded": state is not None, "panes": {}, "owner_note_revision": len(owner_notes)}
     if state is None:
         message = "この仕事の台帳イベントを待っています。" if run_id else "まだ仕事の記録はありません。"
@@ -162,7 +227,13 @@ def project_view(snapshot, configuration, selected=None, owner_notes=()):
     # The live command owns transient progress. The ledger owns these statuses.
     view.update(revision=state["revision"], receipt=receipt, events=events,
                 related_receipts=related, candidates=candidates, assumptions=assumptions,
-                question=assessment.get("question"), human_decisions=human)
+                question=assessment.get("question"), human_decisions=human, outcome=_recorded_outcome(state))
+    outcome = view["outcome"]
+    result_lines = []
+    if outcome:
+        result_lines = ["RESULT / 回答・候補の受け渡し", outcome["message"], ""]
+        if outcome["answer"]:
+            result_lines += [_text(outcome["answer"], 8000), "", "回答の保存・モデル間の合意は、独立した正しさの証明ではありません。", ""]
     from .cleanroom_growth import project as growth_project, summary as growth_summary
     view["growth"] = growth_project(snapshot, configuration, [run_id, *(row["run_id"] for row in related)])
     status_line = " | ".join(name.upper() + ": " + receipt[name]["status"]
@@ -190,6 +261,11 @@ def project_view(snapshot, configuration, selected=None, owner_notes=()):
     evidence = ["EVIDENCE / RECORDED TARGETS ONLY", status_line,
                 "記録時点の対象・有限条件に対する結果です。現在のファイルの再検査ではありません。",
                 "別モデルの合意だけを独立した検証とは扱いません。", ""]
+    if outcome:
+        evidence += ["HANDOFF / 最後に記録された有限条件の照合", outcome["message"],
+                     "Status: " + outcome["status"], "Source: " + str(outcome["source_ref"] or "未記録"),
+                     "Mismatch IDs: " + ", ".join(outcome["mismatch_ids"]),
+                     "意味の正しさや採用権限を証明する検査ではありません。", ""]
     for record in [receipt, *related]:
         evidence += ["Run " + record["run_id"] + " / revision " + str(record["revision"])]
         evidence += _rows("CLAIMS", record["evidence"]["claims"],
@@ -197,7 +273,7 @@ def project_view(snapshot, configuration, selected=None, owner_notes=()):
         evidence += _rows("CHECKS / CONTRACTS", record["system_delta"]["verification_assets"],
                           lambda row: {key: row[key] for key in ("id", "status", "target", "contract_summary", "source_refs", "latest_outcome") if key in row})
         evidence += _rows("FAILURES / NOT SUCCESS", record["system_delta"]["failure_assets"], lambda row: row)
-    agent = ["AGENT WORKBENCH / READ ONLY", "以下は観測・実行・検査の記録です。内部の思考過程は表示しません。", ""]
+    agent = ["AGENT WORKBENCH / READ ONLY", "以下は観測・実行・検査の記録です。内部の思考過程は表示しません。", "", *result_lines]
     agent += _rows("OBSERVED FILES", receipt["project_delta"]["observations"],
                    lambda row: {key: row[key] for key in ("path", "status", "sha256", "source_ref") if key in row})
     agent += _rows("CANDIDATE FINGERPRINTS", candidates, lambda row: row, limit=16)
@@ -211,6 +287,7 @@ def project_view(snapshot, configuration, selected=None, owner_notes=()):
                   "  " + _text(details) if details else "  event:" + event["event_id"]]
     notebook = ["CLEANROOM RECEIPT", _text(state.get("request") or run_id), "", status_line, "", "PROJECT",
                 f"候補ファイル {len(candidates)} / 採用・統合の記録 {len(canonical)}", adoption_line, ""]
+    notebook += result_lines
     notebook += _rows("HUMAN / YOUR CONTRIBUTION", human, lambda row: row.get("reason") or row)
     notebook += _rows("UNDERSTANDING / YOUR CHOICES", learning["ownership_choices"],
                       lambda row: row["ownership_target"] + ": " + row["concept"])
@@ -269,7 +346,20 @@ class Reader:
 
 
 def public_view(view):
-    """Export the display, not raw prompts, response bodies or local inputs."""
+    """Export rendered panes, which can contain notes, context and AI answers.
+
+    This is not an anonymized export; authorization is never included.
+    """
     fields = ("format", "run_id", "project_revision", "revision", "as_of", "read_at",
               "writes", "model_calls", "recorded", "owner_note_revision", "panes")
     return {key: view[key] for key in fields if key in view}
+
+
+# Keep historical receipts renderable while adding the new independent planes.
+_legacy_project_view = project_view
+
+
+def project_view(snapshot, configuration, *args, **kwargs):
+    from .agent_projection import augment_view
+    return augment_view(_legacy_project_view(snapshot, configuration, *args, **kwargs),
+                        snapshot, configuration)

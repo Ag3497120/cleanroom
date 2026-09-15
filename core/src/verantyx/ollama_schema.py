@@ -38,6 +38,9 @@ def _portable(schema, definitions=None):
 
 
 def output_schema(value):
+    from .agent_schema import FORMATS, schema as agent_schema
+    if value.get("format") in FORMATS:
+        return _portable(agent_schema(value))
     if value.get("format") == "verantyx.asset-workflow-request.v1":
         from .domain.asset_workflow import output_schema as asset_schema
         result = _portable(asset_schema(max_checks=value["max_checks"],

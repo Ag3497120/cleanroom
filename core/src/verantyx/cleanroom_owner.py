@@ -25,7 +25,7 @@ NOTE_FILE = "owner-notes.jsonl"
 NOTE_LIMIT = 16 * 1024 * 1024
 KINDS = {"request": "指示", "note": "自分のメモ", "decision": "人間の判断", "question": "判断待ち",
          "assumption": "AIの仮定", "candidate": "変更候補", "learning": "持ち帰る理解",
-         "evidence": "検査記録", "unknown": "未解決"}
+         "evidence": "検査記録", "unknown": "未解決", "response": "回答候補・内容未検証"}
 
 
 def _location(root):
@@ -157,6 +157,11 @@ def catalogue(view, notes=()):
         add("assumption", row["statement"], row)
     for row in view.get("candidates", []):
         add("candidate", row["path"], row, row.get("source_ref"))
+    outcome = view.get("outcome") or {}
+    if outcome.get("answer"):
+        add("response", outcome["answer"].splitlines()[0], outcome["answer"], outcome.get("source_ref"))
+    elif outcome.get("status") in ("REPAIR_REQUIRED", "STALE", "WORK_RESPONSE_EMPTY", "WORK_OUTPUT_INVALID", "WORK_RESPONSE_PENDING"):
+        add("unknown", outcome["message"], outcome, outcome.get("source_ref"))
     for row in view.get("growth", {}).get("items", []):
         body = {key: row[key] for key in ("concept", "minimum_model", "counterexample", "check", "ownership_target", "target_is_suggestion") if key in row}
         items.append(make_item("learning", row["concept"], body, source_ref=row.get("source_ref"),
@@ -182,6 +187,25 @@ def search(items, query):
     return [item for item in items if all(term in normal(item["label"] + "\n" + item["text"] + "\n" + KINDS[item["kind"]]) for term in terms)]
 
 
+def _item_preview(item):
+    """Keep machine-readable references intact; show their human-facing fields."""
+    raw = item["text"]
+    if item["kind"] in ("request", "note", "response", "assumption"):
+        return raw
+    try:
+        value = json.loads(raw)
+    except (ValueError, TypeError):
+        return raw
+    if not isinstance(value, dict):
+        return raw
+    fragments = []
+    for key in ("message", "statement", "reason", "question", "minimum_model", "path", "ownership_target", "status"):
+        text = value.get(key)
+        if isinstance(text, str) and text and text != item["label"] and text not in fragments:
+            fragments.append(text)
+    return " / ".join(fragments) or "出典・条件付きの記録。参照候補として選択できます。"
+
+
 def render_owner(view, items, query=""):
     matched = search(items, query)
     lines = ["OWNER / あなたの指示・判断・理解・メモ", ""]
@@ -189,12 +213,16 @@ def render_owner(view, items, query=""):
         lines += ["LOCAL SEARCH / " + safe_text(query), f"{len(matched)} items / 外部送信なし", ""]
     receipt = view.get("receipt")
     if receipt and not query:
-        lines += [" / ".join(name.upper() + ": " + receipt[name]["status"] for name in ("build", "evidence", "ownership")),
+        outcome = view.get("outcome")
+        if outcome:
+            lines += ["RESULT / " + safe_text(outcome["message"]), ""]
+        lines += ["LAST ASSESSMENT / 最後に記録された評価",
+                  " / ".join(name.upper() + ": " + receipt[name]["status"] for name in ("build", "evidence", "ownership")),
                   "検査は記録時点の範囲です。表示や選択は承認ではありません。", ""]
     for item in matched[:60]:
         lines += [KINDS[item["kind"]] + "  " + safe_text(item["label"])]
         if item["text"].strip() != item["label"]:
-            preview = " ".join(item["text"].split())
+            preview = " ".join(_item_preview(item).split())
             lines += ["  " + safe_text(preview[:180]) + (" ..." if len(preview) > 180 else "")]
         lines += [""]
     if not matched:

@@ -89,10 +89,12 @@ class Cleanroom:
         from prompt_toolkit.layout.dimension import Dimension
         from prompt_toolkit.layout.menus import CompletionsMenu
         from prompt_toolkit.output import ColorDepth
+        from prompt_toolkit.output.defaults import create_output
         from prompt_toolkit.styles import Style
         from prompt_toolkit.widgets import Frame, Label, TextArea
 
         from .cleanroom_owner import OwnerCompleter
+        self.output = create_output()
         completer = ConditionalCompleter(OwnerCompleter(self._visible_owner_items, self.reference_bindings),
                                          filter=Condition(lambda: self.question is None and not self.readonly))
         self.input = TextArea(multiline=True, height=Dimension(min=1, max=5),
@@ -283,7 +285,7 @@ class Cleanroom:
             "completion-menu.completion.current": "bg:#60795c fg:#ffffff bold",
         })
         self.app = Application(layout=Layout(root, focused_element=self.areas["agent"] if self.readonly else self.input),
-                               full_screen=True, key_bindings=bindings, mouse_support=True, style=style,
+                               full_screen=True, key_bindings=bindings, mouse_support=True, style=style, output=self.output,
                                color_depth=ColorDepth.DEPTH_1_BIT if "NO_COLOR" in os.environ else None,
                                refresh_interval=1 if os.environ.get("VERANTYX_REDUCE_MOTION") == "1" else .3)
         self.owner_input.buffer.on_text_changed += self._owner_text_changed
@@ -296,7 +298,7 @@ class Cleanroom:
             return self.agent_column
         if self.focus_name in ("owner", "evidence", "notebook", "review"):
             return self.owner_column
-        size = self.app.output.get_size()
+        size = self.output.get_size()
         mode = layout_mode(size.columns, size.rows)
         return (self.split_side if mode == "side" else self.split_stack if mode == "stack"
                 else self.owner_column if self.active_input == "owner" else self.agent_column)
@@ -847,12 +849,13 @@ class Cleanroom:
             return
         self.busy, self.phase, self.started = True, "preparing", time.monotonic()
         self.preview = None
-        if action == "work":
+        if action in ("work", "work-notebook", "legacy-work"):
             self.pending_request = kwargs["request"]
         basis = deepcopy(self.view)
         self.work_task = asyncio.create_task(self._run_operation(action, basis, kwargs))
 
     async def _run_operation(self, action, basis, kwargs):
+        from .cleanroom_view import operation_message
         follow_up_ui = None
         def invoke():
             from .progress import observe
@@ -861,21 +864,26 @@ class Cleanroom:
                 return self._operation(action, basis, **kwargs)
         try:
             result = await self.loop.run_in_executor(self.work_executor, invoke)
+            self.phase = "idle"
             if isinstance(result, dict):
                 follow_up_ui = result.get("ui_action")
                 self.last_result = result
                 if result.get("run_id"):
                     self.selected = result["run_id"]
-                self._log("操作結果: " + str(result.get("status", "RECORDED")) + " / 証拠と理解の状態は台帳で別々に表示します。", owner=True)
+                status = result.get("status", "RECORDED")
+                self._log("操作結果: " + operation_message(status) + " / 証拠と理解の状態は台帳で別々に表示します。", owner=True)
+                if status in ("BLOCKED", "DECISION_REQUIRED", "UNKNOWN_CONTEXT", "MODEL_CALL_FAILED", "MODEL_OUTCOME_UNKNOWN", "WORK_OUTPUT_INVALID"):
+                    self.phase = "needs attention / 保留・確認が必要"
+                elif status in ("RESPONSE_SAVED", "CANDIDATE_SAVED"):
+                    self.phase = operation_message(status)
                 if result.get("reason"):
-                    self._log(str(result["reason"]), owner=True)
-            self.phase = "idle"
+                    self._log(operation_message(result["reason"]), owner=True)
         except OwnerCancelled:
             self.phase = "paused"
             self._log("今回の未実行操作を中止しました。既に記録された結果は取り消しません。", owner=True)
         except (LedgerError, config.ConfigError, sqlite3.Error, OSError, ValueError) as error:
             self.phase = "needs attention"
-            self._log("操作を完了できませんでした: " + getattr(error, "code", type(error).__name__)
+            self._log("操作を完了できませんでした: " + operation_message(getattr(error, "code", type(error).__name__))
                       + "\n自動で再試行しません。失敗・結果不明・記録済みを台帳で区別してください。", owner=True)
         except Exception as error:
             self.phase = "needs attention"
@@ -894,7 +902,17 @@ class Cleanroom:
         from .development import run_work
         from .constitution import prepare
         from .model_settings import activate_codex, clear, describe
-        if action == "work":
+        if action in ("work", "work-notebook"):
+            from .cleanroom_owner import expand_request
+            request = expand_request(kwargs["request"], kwargs.get("owner_references", []))
+            return console._new_work(self.root, self.configuration, "assisted", request=request)
+        if action in ("project", "review", "learn", "assets", "decisions", "notebook", "history"):
+            from .owner_notebook import show_project, open_notebook
+            if action == "project":
+                return show_project(self.root, self.configuration)
+            return open_notebook(self.root, self.configuration, run_id=kwargs.get("run_id"),
+                                 section="learn" if action == "learn" else action)
+        if action == "legacy-work":
             from .cleanroom_owner import expand_request
             references = kwargs.get("owner_references", [])
             request = expand_request(kwargs["request"], references)
@@ -925,6 +943,8 @@ class Cleanroom:
                         + "\nここを開くだけでは送信しません。最大8件の候補であり、全ソースの理解ではありません。")
             return
         if action == "models":
+            return console._model_settings(self.root, self.configuration)
+        if action == "legacy-models":
             provider = self.choose("Models & Providers / " + describe(self.configuration)["label"], [
                 ("codex", "ChatGPT Codex subscription"), ("ollama", "Ollama local models"),
                 ("openai", "OpenAI API"), ("anthropic", "Anthropic API"), ("gemini", "Gemini API"),

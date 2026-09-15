@@ -222,6 +222,10 @@ def dispatch(root, configuration, args, locale):
 
 def _dispatch(root, configuration, args, locale):
     command = args.command
+    if command == "organize":
+        from .agent_runtime import organize
+        return organize(root, configuration, args.run_id, adapter=args.adapter,
+                        key=args.key, timeout=args.timeout)
     from .commands_v04 import handler
     extension = handler(command)
     if extension is not None:

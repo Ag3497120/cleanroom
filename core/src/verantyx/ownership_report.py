@@ -75,6 +75,12 @@ def _candidate_changes(files, observations, source_ref=None):
 
 def report(root, configuration, run_id, locale="ja"):
     """Return a six-delta ownership report without a model call or mutation."""
+    from .agent_projection import owner_projection
+    from .agent_runtime import _state
+    recorded = _state(root, configuration, run_id)
+    if recorded.get("work_session"):
+        return {"schema_version": 1, "ok": True, "command": "ownership",
+                "revision": recorded["revision"], **owner_projection(recorded)}
     historical = historical_report(root, configuration, run_id, locale)
     state = read_state(root, configuration, run_id)
     gate = _work_gate(state)

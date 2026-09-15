@@ -25,7 +25,7 @@ def source_units(request):
     groups = []
     for source in request["shared_context"]["sources"]:
         parts = []
-        for quote in re.split(r"(?<=[。！？!?；;、，\n])", source["text"]):
+        for quote in re.split(r"(?<=[。！？!?；;\n])", source["text"]):
             if quote.strip():
                 parts.append(quote)
             elif quote and parts:
@@ -123,12 +123,20 @@ def schema(request, *, line_blocks=False):
                               array({"enum": [s["path"] for s in request["selected_files"] if s["path"].endswith(".py")]}, maximum=16)
                               if any(s["path"].endswith(".py") for s in request["selected_files"]) else {"const": []}),
                           notes=_string(8000))
+        if "response" in request["response_template"]:
+            from .work_output import response_schema
+            contract = request.get("work_output_contract")
+            properties["response"] = response_schema(contract)
+            if contract and contract["read_only"]:
+                properties["files"] = {"const": {}}
         if line_blocks:
             properties.pop("files")
             properties["file_line_blocks"] = {"type": "object", "maxProperties": 16,
                 "additionalProperties": _object({"lines": array({"type": "string"}, maximum=10000),
                                                   "newline": {"enum": ["LF", "CRLF"]},
                                                   "final_newline": {"type": "boolean"}})}
+            if request.get("work_output_contract", {}).get("read_only"):
+                properties["file_line_blocks"] = {"const": {}}
     return _object(properties)
 
 

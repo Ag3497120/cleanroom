@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import fcntl
 import os
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -141,19 +142,27 @@ def assess(root, configuration, request):
     """Classify a task by decision rights, never by prompt length."""
     request = _text(request, "request", 12000)
     constitution = model_packet(root, configuration)
-    lowered = request.casefold()
+    from .work_output import split_owner_context
+    instruction = split_owner_context(request)[0]
+    lowered = instruction.casefold()
+    # A demonstrative inside a concrete request is not a missing task. Match
+    # only an underspecified instruction as a whole, not every use of "これ".
+    bare = re.sub(r"[\s。！!？?、,\.]+", "", lowered)
+    underspecified = bool(re.fullmatch(
+        r"(?:これ|それ|いい感じ|適切に|よしなに|whatever)"
+        r"(?:(?:これ|それ|を|に|で|と|は|も|いい感じ|適切に|よしなに|修正|変更|実装|改善|説明|要約|お願い|して|する|ください|頼む))*", bare))
     matched = [term for term in _HIGH_IMPACT if term.casefold() in lowered]
     matched += [item for item in constitution["human_owned_decisions"] if item.casefold() in lowered]
     matched = list(dict.fromkeys(matched))
     if matched:
         status, question = "ASK_ONE_DECISION", "今回の変更で優先する人間の判断を一つだけ記録してください。"
         reason = "人間専有になり得る領域に触れています: " + "、".join(matched[:3])
-    elif not constitution["purpose"] and any(marker in lowered for marker in _LOW_CONTEXT):
+    elif not constitution["purpose"] and underspecified:
         status, question = "UNKNOWN", "この作業で達成したい結果を一文で記録してください。"
         reason = "プロジェクト目的も具体的な作業対象も記録されていません。"
-    elif any(marker in lowered for marker in _LOW_CONTEXT):
-        status, question = "ASSUME_AND_EXECUTE", "今回の作業で守る条件を一つだけ記録してください。"
-        reason = "短さではなく、既存目的だけでは選べない変更範囲が残っています。"
+    elif underspecified:
+        status, question = "ASSUME_AND_EXECUTE", None
+        reason = "既存目的を参照して可逆な調査から進めます。未委譲の判断や本体への変更を許可するものではありません。"
     else:
         status, question = "EXECUTE", None
         reason = "既存のプロジェクト文脈を注入し、可逆な範囲から進められます。"

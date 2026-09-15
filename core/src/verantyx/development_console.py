@@ -85,6 +85,9 @@ def _friendly_status(status):
 
 
 def show_result(root, result):
+    if "work" in result:
+        from .agent_console import show_result as show_agent_result
+        return show_agent_result(root, result)
     from .cleanroom_notebook import render_work_receipt
     print("\n╭─ WORK NOTE ─────────────────────────────────────────────────")
     print("│ " + result.get("request", result.get("run_id", "This work")))
@@ -192,6 +195,11 @@ def _confirm_context(context_files):
 
 
 def _new_work(root, configuration, mode, previous=None, request=None):
+    from .agent_console import start_work
+    return start_work(root, configuration, mode, previous=previous, request=request)
+
+
+def _legacy_new_work(root, configuration, mode, previous=None, request=None):
     from .development import run_work
     from .constitution import assess
     request = request if request is not None else _ask(
@@ -250,6 +258,13 @@ def _choose_work(root, configuration):
 
 
 def _dictionary(root, configuration, run_ids=None):
+    from .owner_experience import read_states, cards
+    from .owner_notebook import open_notebook
+    owner_states = read_states(root, configuration)
+    if any(cards(state) for state in owner_states
+           if run_ids is None or state["run_id"] in run_ids):
+        selected_run = next(iter(run_ids)) if run_ids and len(run_ids) == 1 else None
+        return open_notebook(root, configuration, run_id=selected_run, section="learn")
     from .personal_skills import stack
     library = stack(root, configuration, run_ids=run_ids, limit=100, locale="ja")
     groups = {}
@@ -416,6 +431,9 @@ def _work_detail(root, configuration, mode, run_id=None):
     if not work:
         return
     selected_id = work["run_id"]
+    if work.get("work_plane"):
+        from .owner_notebook import open_notebook
+        return open_notebook(root, configuration, run_id=selected_id)
     while True:
         # Refresh after each explicit operation. Never ask the user to locate
         # the new judgment run or silently repeat the previous verifier/model.
@@ -618,6 +636,11 @@ def _settings_hub(root, configuration):
 
 
 def _model_settings(root, configuration):
+    from .agent_console import configure
+    return configure(root, configuration)
+
+
+def _legacy_model_settings(root, configuration):
     from . import model_settings
     while True:
         current = model_settings.describe(configuration)
@@ -730,6 +753,13 @@ def _notebook_intent(value):
 
 
 def _notebook_action(root, configuration, mode, action):
+    if action in ("project", "review", "notebook", "history", "learn", "assets", "decisions"):
+        from .owner_notebook import show_project, open_notebook
+        if action == "project":
+            show_project(root, configuration)
+        else:
+            open_notebook(root, configuration, section="learn" if action == "learn" else action)
+        return False
     if action == "quit":
         return True
     if action == "project":

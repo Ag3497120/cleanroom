@@ -117,9 +117,11 @@ def _collect(root, configuration, run_id, source_ref, proposals, key):
         minimum = item["minimum_model"]
         if item.get("reference"):
             minimum += " 関連資料の候補（この実行では取得・確認していません）: " + item["reference"]
+        refs = list(dict.fromkeys([source_ref, *item.get("source_refs", [])]))
+        suggested_target = item.get("suggested_target", "REVIEW")
         payload = {"id": candidate, "concept": item["concept"], "concept_id": item["concept_id"],
-                   "why_now": item["why_now"], "project_anchor": source_ref, "source_refs": [source_ref],
-                   "suggested_target": "REVIEW", "minimum_model": minimum,
+                   "why_now": item["why_now"], "project_anchor": source_ref, "source_refs": refs,
+                   "suggested_target": suggested_target, "minimum_model": minimum,
                    "counterexample": item["counterexample"], "check": item["check"],
                    "system_capture": ["REFERENCE"], "origin": "LOCAL"}
         state = read_state(root, configuration, run_id)
@@ -134,14 +136,20 @@ def _collect(root, configuration, run_id, source_ref, proposals, key):
                              expected_revision=None, concept=item["concept"], concept_id=item["concept_id"],
                              why_now=item["why_now"], minimum_model=minimum,
                              counterexample=item["counterexample"], check=item["check"],
-                             source_refs=[source_ref])
+                             source_refs=refs, suggested_target=suggested_target)
         candidates.append(candidate)
     return candidates
 
 
 def _annotate(root, configuration, run_id, *, request, origin, summary, text, mode, key, task_gate=None):
     from .external_capture import capture
-    proposals = learning_proposals(text, request, summary.get("files", []))
+    if "learning_proposals" in summary:
+        proposals = deepcopy(summary["learning_proposals"])
+    else:
+        proposals = learning_proposals(text, request, summary.get("files", []))
+    if proposals:
+        preferences = read_state(root, configuration, run_id).get("learning_preferences") or {}
+        proposals = proposals[:max(1, min(3, preferences.get("max_items", 1)))]
     if summary.get("status") in ("MODEL_CALL_FAILED", "MODEL_OUTCOME_UNKNOWN"):
         proposals = [{
             "concept_id": "work.model-failure", "concept": "AIの失敗と結果不明を区別し、二重実行を防ぐ",
@@ -227,13 +235,60 @@ def _save_candidate(root, result, allow_contested):
     from .partner_delivery import delivery_authorization
     from .adapters.observations import normalize_path
     state = result["state"]
-    handoff = delivery_authorization(state, allow_contested_handoff=allow_contested)
-    if not handoff["allowed"]:
-        return {"status": "BLOCKED", "reason": handoff["reason"], "handoff": handoff, "files": []}
     document = (state.get("editor_attempt") or {}).get("document") or {}
     files = document.get("files") or {}
-    require(0 < len(files) <= 16, "WORK_FILE_COUNT")
+    require(len(files) <= 16, "WORK_FILE_COUNT")
+    from .work_output import contract_for, task_text, check_output, readonly_handoff
+    from .shared_context import current_editor_attempt
+    attempt = current_editor_attempt(state)
+    handoff = (readonly_handoff(state) if not files else
+               delivery_authorization(state, allow_contested_handoff=allow_contested))
+    binding = {"editor_sha256": digest(document),
+               "editor_source_ref": (attempt or {}).get("source_ref")}
+    if not attempt:
+        return {"status": "BLOCKED", "reason": "SHARED_CONTEXT_STALE", "handoff": handoff,
+                "files": [], "learning_proposals": [], **binding}
+    if files and contract_for(task_text(state))["read_only"]:
+        return {"status": "BLOCKED", "reason": "WORK_READONLY_FILES", "handoff": handoff,
+                "files": [], "learning_proposals": [], **binding}
+    if not handoff["allowed"]:
+        return {"status": "BLOCKED", "reason": handoff["reason"], "handoff": handoff,
+                "files": [], "learning_proposals": [], **binding}
     parts = ("vera-work", result["run_id"], digest(document))
+    if not files:
+        from .bridges import _selected_files
+        frozen = attempt.get("selected_files") or []
+        try:
+            selected = _selected_files(root, state, [row["path"] for row in frozen])
+            require([{key: row[key] for key in ("path", "sha256", "source_ref")} for row in selected] == frozen,
+                    "WORK_OUTPUT_SOURCE_CHANGED")
+            checked = check_output(state, selected)
+        except LedgerError as error:
+            checked = {"format": "verantyx.output-check.v1", "valid": False,
+                       "issues": [error.code], "editor_sha256": digest(document)}
+        if not checked["valid"]:
+            return {"status": "WORK_OUTPUT_INVALID", "reason": "WORK_OUTPUT_INVALID", "files": [],
+                    "output_check": checked, "handoff": handoff, "learning_proposals": [],
+                    "canonical_adopted": False, "automatic_retry": False, **binding}
+        answer = checked["answer"]
+        receipt = {
+            "format": "verantyx.work-response.v2", "parent_run": result["run_id"],
+            "handoff": handoff, "original_editor": document,
+            "output_check": checked,
+            "response_source_ref": (state.get("editor_attempt") or {}).get("source_ref"),
+            "canonical_adopted": False, "generated_code_executed": False,
+            "evidence": "UNVERIFIED", "semantic_fidelity": "UNPROVEN",
+        }
+        _write_files(root, parts, {
+            "receipt.json": (canonical(receipt) + "\n").encode("utf-8"),
+            "answer.md": (answer.strip() + "\n").encode("utf-8"),
+        })
+        return {"status": "RESPONSE_SAVED", "files": [], "answer": answer.strip(),
+                "artifact_directory": "/".join(parts), "response_path": "/".join((*parts, "answer.md")),
+                "handoff": handoff, "evidence": "UNVERIFIED", "semantic_fidelity": "UNPROVEN",
+                "canonical_adopted": False, "generated_code_executed": False,
+                "output_check": {key: value for key, value in checked.items() if key not in ("answer", "learning_proposals")},
+                "learning_proposals": checked["learning_proposals"], **binding}
     for path, body in files.items():
         normalize_path(path)
         require(isinstance(body, str) and len(body.encode("utf-8")) <= 65536, "WORK_FILE_SIZE")
@@ -316,7 +371,7 @@ def run_work(root, configuration, *, request, key, include=(), target=None, expe
         run_id, summary = outcome["run_id"], outcome["summary"]
         recovered = _annotate(root, configuration, run_id, request=request, origin=origin or root.name,
                               summary=summary, text=outcome["text"], mode=mode, key=key, task_gate=task_gate)
-        value = {"ok": summary["status"] in ("COMPLETE_BOUNDED", "CANDIDATE_SAVED"),
+        value = {"ok": summary["status"] in ("COMPLETE_BOUNDED", "CANDIDATE_SAVED", "RESPONSE_SAVED"),
                  "command": "develop", "project_root": str(root), "run_id": run_id, "request": request,
                  **summary, **recovered, "delivery": outcome["delivery"], "duplicate": False,
                  "automatic_rule_promotion": False, "human_mastery": "NOT_ASSESSED",
@@ -497,3 +552,22 @@ def dispatch(root, configuration, args):
     return {"ok": False, "command": "develop", "status": "INTERACTIVE_REQUIRED",
             "project_root": str(Path(root).resolve()),
             "reason": "対話メニューは端末から引数なしの develop で開始してください。"}
+
+
+# The finite-contract two-role path remains explicit, not a natural-language
+# classifier in front of ordinary work.
+_legacy_run_work = run_work
+_legacy_work_summaries_from_snapshot = work_summaries_from_snapshot
+
+
+def run_work(root, configuration, **kwargs):
+    legacy = kwargs.pop("legacy_contract", False)
+    if legacy or kwargs.get("target") or kwargs.get("expectations"):
+        return _legacy_run_work(root, configuration, **kwargs)
+    from .agent_runtime import run_work as run_agent_work
+    return run_agent_work(root, configuration, **kwargs)
+
+
+def work_summaries_from_snapshot(snapshot):
+    from .agent_projection import summaries
+    return summaries(snapshot, _legacy_work_summaries_from_snapshot(snapshot))

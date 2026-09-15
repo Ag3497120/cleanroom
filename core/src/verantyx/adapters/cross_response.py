@@ -9,6 +9,7 @@ from pathlib import Path
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 
@@ -94,11 +95,13 @@ def _configured_binary(binary):
     configured = binary if binary is not None else os.environ.get("VERANTYX_CROSS")
     if configured is None:
         project = Path(__file__).resolve().parents[3]
-        candidate = project.parent / "cross/build/cross"
-        configured = candidate if candidate.is_file() else None
+        candidates = (Path(__file__).resolve().parents[1] / "bin/cross",
+                      project.parent / "cross/build/cross",
+                      shutil.which("verantyx-cross"), shutil.which("cross"))
+        configured = next((candidate for candidate in candidates if candidate and Path(candidate).is_file()), None)
     if configured is None:
         raise LedgerError("CROSS_UNAVAILABLE")
-    if not isinstance(configured, (str, os.PathLike)):
+    if not isinstance(configured, (str, os.PathLike)) or not str(configured).strip():
         raise LedgerError("ARGUMENTS")
     return Path(configured).expanduser().resolve()
 

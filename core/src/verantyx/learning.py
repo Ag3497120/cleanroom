@@ -290,7 +290,7 @@ def _receipt_view(receipt, key):
 def control_learning(root, configuration, run_id, operation, *, candidate_id=None, key=None,
                      expected_revision=None, target=None, reason=None, concept=None, concept_id=None,
                      why_now=None, minimum_model=None, counterexample=None, check=None,
-                     source_refs=(), statement=None, clock=None):
+                     source_refs=(), statement=None, clock=None, suggested_target=None):
     """Append one voluntary operation with a normal hash-chain command receipt.
 
     collect saves existing suggestions; raise creates a locally supplied candidate.
@@ -329,11 +329,15 @@ def control_learning(root, configuration, run_id, operation, *, candidate_id=Non
         raise LedgerError("ARGUMENTS")
     if source_refs and operation not in {"raise", *EVIDENCE_OPERATIONS}:
         raise LedgerError("ARGUMENTS")
+    if suggested_target is not None and (operation != "raise" or suggested_target not in TARGETS):
+        raise LedgerError("ARGUMENTS")
     intent = {"operation": "learning." + operation, "run_id": run_id, "candidate_id": candidate_id,
               "expected_revision": expected_revision, "target": target, "reason": reason,
               "concept": concept, "concept_id": concept_id, "why_now": why_now,
               "minimum_model": minimum_model, "counterexample": counterexample, "check": check,
               "source_refs": source_refs, "statement": statement}
+    if suggested_target is not None:
+        intent["suggested_target"] = suggested_target
     input_hash = digest(intent)
     clock = clock or now
     project_id = configuration["project"]["id"]
@@ -385,7 +389,7 @@ def control_learning(root, configuration, run_id, operation, *, candidate_id=Non
             identity = candidate_id or digest({"anchor": source_refs[0] if source_refs else None, "concept": concept_id})
             payload = {"id": identity, "concept": concept, "concept_id": concept_id, "why_now": why_now,
                        "project_anchor": source_refs[0] if source_refs else None, "source_refs": source_refs,
-                       "suggested_target": "REVIEW", "minimum_model": minimum_model,
+                       "suggested_target": suggested_target or "REVIEW", "minimum_model": minimum_model,
                        "counterexample": counterexample, "check": check, "system_capture": ["REFERENCE"], "origin": "LOCAL"}
             validate_payload("LearningCandidateRaised", payload)
             _known_refs(state, source_refs)
