@@ -4,6 +4,16 @@
 
 ## English
 
+For compact layouts, full-width reading, selection/copy and reading-position controls, see the [five-language reading guide](READABILITY.md) and [scrolling controls](SCROLLING.md). These controls do not change AI permissions or empty-Enter input switching.
+
+| Reading action | Control |
+| --- | --- |
+| Expand current pane / restore split view | F5, /fullscreen, /split |
+| Select and copy text | Drag then Ctrl+C; F6 copies selection or current pane |
+| Read older messages / return to latest | Wheel or PgUp/PgDn; Ctrl+End or /latest |
+| Native terminal selection | F7 or /mouse |
+
+
 Agent is on the left; Owner is your notebook on the right, not another AI.
 A thick mint border marks Agent input, yellow marks Owner memo, green marks Owner search. A text label also identifies focus.
 Model answers and system activity are separate panels. The header displays the configured model, not an identity guessed from model prose. CLI default means the concrete model ID is unresolved.

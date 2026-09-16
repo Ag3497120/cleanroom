@@ -1,45 +1,46 @@
-"""Route terminal wheel/page events to the active pane without moving input focus.
+"""Scroll the selected reading pane in physical rows, retaining editor drafts.
 
-The terminal's native scrollback scrollbar is outside this application's control.
-This module changes only the full-screen application's content viewport.
+Native terminal scrollback remains controlled by the terminal. F7 releases mouse
+reporting for native text selection; normal wheel events stay in the active pane.
 """
 from functools import wraps
-from types import SimpleNamespace
 
 from prompt_toolkit.filters import Condition
-from prompt_toolkit.key_binding.bindings.scroll import scroll_forward, scroll_backward
 from prompt_toolkit.mouse_events import MouseEventType
 
 
 def install_pane_scroll(session, bindings):
     def available():
-        return ((session.picker is None or session.picker.get("inline", False))
-                and session.input.buffer.complete_state is None)
-
-    def target():
-        if session.focus_name in session.areas:
-            return session.areas[session.focus_name]
-        return session.areas["agent" if session.active_input == "agent" else session._owner_page()]
+        return (not session.native_selection
+                and (session.picker is None or session.picker.get("inline", False))
+                and session.input.buffer.complete_state is None
+                and session.owner_input.buffer.complete_state is None)
 
     def move(direction, page=False):
-        area = target()
+        name, area = session._reading_target()
         window = area.window
-        if window.render_info is None:
+        if (window.render_info is None or area.buffer.selection_state is not None
+                or session.reading_drag is area):
             return
-        if area is session.areas.get("owner") and session._archive_scroll(direction, window):
+        height = max(1, window.render_info.window_height)
+        maximum = max(0, area.buffer.document.line_count - height)
+        current = max(0, min(maximum, window.vertical_scroll))
+        at_edge = current == (maximum if direction > 0 else 0)
+        if name == "owner" and at_edge and session._archive_scroll(direction, window):
             return
-        if page:
-            # Use prompt_toolkit's wrapped-line-aware paging, temporarily focusing
-            # only this body. Restore the editor without touching its draft.
-            previous = session.app.layout.current_window
-            try:
-                session.app.layout.focus(area)
-                event = SimpleNamespace(app=session.app)
-                (scroll_forward if direction > 0 else scroll_backward)(event)
-            finally:
-                session.app.layout.focus(previous)
-        else:
-            (window._scroll_down if direction > 0 else window._scroll_up)()
+        # Reading buffers contain display rows. Do not use prompt_toolkit's
+        # private scroll helpers, which count logical lines in wrapped buffers.
+        distance = max(1, height - 2) if page else 1
+        top = max(0, min(maximum, current + direction * distance))
+        state = session.reading_views.get(name)
+        if state:
+            state.follow = name == "agent" and direction > 0 and top == maximum
+            if state.follow:
+                state.unseen = False
+        document = area.buffer.document
+        row = max(top, min(top + height - 1, document.cursor_position_row))
+        area.buffer.cursor_position = document.translate_row_col_to_index(row, document.cursor_position_col)
+        window.vertical_scroll, window.vertical_scroll_2 = top, 0
         session.app.invalidate()
 
     @bindings.add("pageup", filter=Condition(available), eager=True)
@@ -58,14 +59,21 @@ def install_pane_scroll(session, bindings):
     def line_down(event):
         move(1)
 
+    @bindings.add("c-home", filter=Condition(available), eager=True)
+    def first(event):
+        session._reading_jump(False)
+
+    @bindings.add("c-end", filter=Condition(available), eager=True)
+    def latest(event):
+        session._reading_jump(True)
+
     def route_wheel(app):
-        if not available():
+        if session.native_selection:
             return
         raster = app.renderer.mouse_handlers.mouse_handlers
         wrappers = {}
 
         def wrap(handler):
-            # Some repaints reuse the previous screen's mouse map.
             original = getattr(handler, "_cleanroom_original", handler)
             if original not in wrappers:
                 @wraps(original)
@@ -77,7 +85,12 @@ def install_pane_scroll(session, bindings):
                         if event.event_type == MouseEventType.SCROLL_DOWN:
                             move(1)
                             return None
-                    return original(event)
+                    try:
+                        return original(event)
+                    finally:
+                        # A release can land outside the pane where a drag began.
+                        if event.event_type == MouseEventType.MOUSE_UP:
+                            session.reading_drag = None
                 dispatch._cleanroom_original = original
                 wrappers[original] = dispatch
             return wrappers[original]

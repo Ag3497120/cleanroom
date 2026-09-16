@@ -28,6 +28,7 @@ from .interaction_ux import InteractionUX, SETTINGS_ACTIONS
 from .interaction_text import tr
 from .input_recall import InputRecall
 from .conversation_ux import ConversationUX
+from .reading_ux import ReadingUX, fit_text
 from .console_copy import ui_text
 
 
@@ -47,7 +48,7 @@ class Question:
     preview: dict | None = None
 
 
-class Cleanroom(LiveLearningUX, SessionUX, ConversationUX, InteractionUX):
+class Cleanroom(ReadingUX, LiveLearningUX, SessionUX, ConversationUX, InteractionUX):
     def __init__(self, root, configuration, *, readonly=False, run_id=None, initial_request=None, practice=False):
         self.root, self.configuration = Path(root), configuration
         self.readonly, self.selected, self.initial_request = readonly, run_id, initial_request
@@ -94,6 +95,7 @@ class Cleanroom(LiveLearningUX, SessionUX, ConversationUX, InteractionUX):
         self.loop = None
         self.work_task = None
         self._init_sessions()
+        self._init_reading()
         self._build()
 
     def _tr(self, en, ja):
@@ -123,17 +125,17 @@ class Cleanroom(LiveLearningUX, SessionUX, ConversationUX, InteractionUX):
         completer = ConditionalCompleter(SessionCompleter(self, self.owner_completer),
                                          filter=Condition(lambda: self.question is None and not self.readonly
                                                           and not self.settings_active))
-        self.input = TextArea(multiline=True, height=Dimension(min=1, max=5),
+        self.input = TextArea(multiline=True, height=lambda: Dimension(min=1, max=3 if self._compact_ui() else 5),
                               prompt="  > ", accept_handler=self._submit, wrap_lines=True,
-                              completer=completer, complete_while_typing=True)
-        self.owner_input = TextArea(multiline=True, height=Dimension(min=1, max=4),
+                              completer=completer, complete_while_typing=True, focus_on_click=True)
+        self.owner_input = TextArea(multiline=True, height=lambda: Dimension(min=1, max=2 if self._compact_ui() else 4),
                                     prompt="  > ", accept_handler=self._submit_owner, wrap_lines=True,
                                     completer=ConditionalCompleter(SessionCompleter(self),
                                         filter=Condition(lambda: not self.settings_active and not self.readonly)),
-                                    complete_while_typing=True)
+                                    complete_while_typing=True, focus_on_click=True)
         self.input.window.style = self._agent_input_style
         self.owner_input.window.style = self._owner_style
-        self.areas = {name: TextArea(read_only=True, scrollbar=True, wrap_lines=True)
+        self.areas = {name: TextArea(read_only=True, scrollbar=True, wrap_lines=False, focus_on_click=True)
                       for name in ("owner", "agent", "evidence", "notebook", "review")}
         self.areas["agent"].lexer = self.chat_lexer
         self.areas["owner"].lexer = self.owner_lexer
@@ -147,37 +149,49 @@ class Cleanroom(LiveLearningUX, SessionUX, ConversationUX, InteractionUX):
         frames = {name: Frame(area, title=titles[name], width=Dimension(weight=1))
                   for name, area in self.areas.items()}
         self.frames = frames
+        self.system_area = TextArea(read_only=True, scrollbar=True, wrap_lines=False,
+                                    focus_on_click=True, style="class:muted",
+                                    height=lambda: Dimension(min=1, max=(6 if self._compact_ui() else 8)
+                                                             if self.details_visible else 2))
         self.menu_control = FormattedTextControl(self._menu_text, focusable=True,
                                                  get_cursor_position=lambda: Point(0, self.choice_index))
-        self.menu_window = Window(self.menu_control, wrap_lines=True, height=Dimension(min=2, max=8))
+        self.menu_window = Window(self.menu_control, wrap_lines=False,
+                                  height=lambda: Dimension(min=2, max=4 if self._compact_ui() else 8))
         self.choice_body = HSplit([
-            Window(FormattedTextControl(self._question_title), wrap_lines=True, height=Dimension(min=1, max=3)),
+            Window(FormattedTextControl(self._question_title), wrap_lines=True,
+                   height=lambda: Dimension(min=1, max=2 if self._compact_ui() else 3)),
             self.menu_window,
-            Window(FormattedTextControl(self._menu_detail), height=Dimension(min=2, max=4), wrap_lines=True, style="class:detail"),
-            Window(FormattedTextControl(lambda: self._ux("keys")), height=2, wrap_lines=True, style="class:muted"),
+            Window(FormattedTextControl(self._menu_detail),
+                   height=lambda: Dimension(min=1, max=3 if self._compact_ui() else 4),
+                   wrap_lines=True, style="class:detail"),
+            Window(FormattedTextControl(lambda: self._ux("keys")),
+                   height=lambda: 1 if self._compact_ui() else 2, wrap_lines=True, style="class:muted"),
         ])
         self.dialog = Frame(self.choice_body, title=self._tr("One choice / Yours to make", "One choice / あなたの選択"), width=Dimension(preferred=76, max=96))
         growth_margin = ConditionalContainer(Frame(HSplit([
             Window(FormattedTextControl(self._growth_card), wrap_lines=True, height=Dimension(min=2, max=4)),
             Window(FormattedTextControl(self._growth_actions), wrap_lines=True, height=Dimension(min=1, max=2)),
-        ]), title=self._tr("Keep one insight / Only when you want to", "Keep one insight / 今回持ち帰る理解")), filter=Condition(self._growth_visible))
+        ]), title=self._tr("Keep one insight / Only when you want to", "Keep one insight / 今回持ち帰る理解")), filter=Condition(lambda: self._growth_visible() and not self._compact_ui()))
         owner_field = ConditionalContainer(Frame(HSplit([
-            Window(FormattedTextControl(self._owner_title), height=1, style=self._owner_style),
+            ConditionalContainer(Window(FormattedTextControl(self._owner_title), height=1, style=self._owner_style),
+                                 filter=Condition(lambda: not self._compact_ui())),
             self.owner_input,
-        ]), title="Owner / local only"), filter=Condition(lambda: not self.readonly))
+        ]), title=lambda: self._rt("memo" if self.owner_mode == "memo" else "search")
+            if self._compact_ui() else "Owner / local only"), filter=Condition(lambda: not self.readonly))
         self.agent_column = HSplit([
-            frames["agent"],
-            Frame(Window(FormattedTextControl(self._system_text), wrap_lines=True, style="class:muted",
-                         height=lambda: Dimension(min=1, max=8 if self.details_visible else 2)),
-                  title=lambda: self._ux("activity")),
-
+            DynamicContainer(lambda: self.areas["agent"] if self._compact_ui() else frames["agent"]),
+            ConditionalContainer(Frame(self.system_area, title=lambda: self._ux("activity")),
+                                 filter=Condition(lambda: self.details_visible or not self._compact_ui())),
             ConditionalContainer(Window(FormattedTextControl(self._input_title),
-                                        height=Dimension(min=1, max=4), wrap_lines=True),
-                                 filter=Condition(lambda: not self.readonly)),
+                                        height=lambda: Dimension(min=1, max=2 if self._compact_ui() else 4),
+                                        wrap_lines=True),
+                                 filter=Condition(lambda: not self.readonly and not self._inline_choice()
+                                                  and (self.question is not None or not self._compact_ui()))),
             ConditionalContainer(Frame(HSplit([
                 ConditionalContainer(self.choice_body, filter=Condition(self._inline_choice)),
                 self.input,
-            ]), title=lambda: self._work_indicator() or self._tr("Agent / What shall we build?", "Agent / あなたからの依頼")),
+            ]), title=lambda: self._work_indicator() or ("Agent" if self._compact_ui() else
+                          self._tr("Agent / What shall we build?", "Agent / あなたからの依頼"))),
                                  filter=Condition(lambda: not self.readonly)),
             ConditionalContainer(Window(FormattedTextControl(lambda: self._tour_hint("agent")), height=3,
                                         wrap_lines=True, style="class:warning"),
@@ -190,12 +204,13 @@ class Cleanroom(LiveLearningUX, SessionUX, ConversationUX, InteractionUX):
             ConditionalContainer(Window(FormattedTextControl(lambda: self._tour_hint("owner")), height=3, wrap_lines=True, style="class:warning"), filter=Condition(lambda: bool(self._tour_hint("owner")))),
             owner_field,
             ConditionalContainer(Window(FormattedTextControl(self._review_status), wrap_lines=True,
-                                        height=Dimension(min=1, max=3), style="class:warning"),
+                                        height=lambda: Dimension(min=1, max=1 if self._compact_ui() else 3), style="class:warning"),
                                  filter=Condition(lambda: bool(self._review_status()))),
             ConditionalContainer(Window(FormattedTextControl(self._handoff_text),
                                         height=Dimension(min=1, max=3), wrap_lines=True, style="class:handoff"),
-                                 filter=Condition(lambda: self.handoff is not None)),
-            DynamicContainer(lambda: self.frames[self._owner_page()]),
+                                 filter=Condition(lambda: self.handoff is not None and not self._compact_ui())),
+            DynamicContainer(lambda: self.areas[self._owner_page()] if self._compact_ui()
+                             else self.frames[self._owner_page()]),
             growth_margin,
         ], width=Dimension(weight=1))
         def outlined(body, name):
@@ -218,10 +233,12 @@ class Cleanroom(LiveLearningUX, SessionUX, ConversationUX, InteractionUX):
                                   Window(FormattedTextControl(self._horizontal_boundary), height=1, style="class:boundary"),
                                   self.owner_column])
         content = HSplit([
-            Window(FormattedTextControl(self._header), height=4, style="class:header"),
-            Window(FormattedTextControl(self._tabs), height=1),
+            Window(FormattedTextControl(self._header), height=lambda: 2 if self._compact_ui() else 4, style="class:header"),
+            ConditionalContainer(Window(FormattedTextControl(self._tabs), height=1),
+                                 filter=Condition(lambda: not self._compact_ui())),
             DynamicContainer(self._body),
-            Window(FormattedTextControl(self._footer), height=2, wrap_lines=True, style="class:muted"),
+            Window(FormattedTextControl(self._footer), height=lambda: 2 if self._compact_ui() else 3,
+                   wrap_lines=False, style="class:muted"),
         ])
         root = FloatContainer(content=content, floats=[Float(content=ConditionalContainer(
             self.dialog, filter=Condition(lambda: self.picker is not None and not self._inline_choice()))),
@@ -332,6 +349,9 @@ class Cleanroom(LiveLearningUX, SessionUX, ConversationUX, InteractionUX):
 
         @bindings.add("escape", eager=False)
         def back(event):
+            if self._clear_reading_selection():
+                self._focus_input()
+                return
             if self.owner_input.buffer.complete_state is not None and self.picker is None:
                 self.owner_input.buffer.cancel_completion()
             elif self.input.buffer.complete_state is not None and self.picker is None:
@@ -355,6 +375,7 @@ class Cleanroom(LiveLearningUX, SessionUX, ConversationUX, InteractionUX):
             def focus(event, name=name):
                 if self.picker is None:
                     self.focus_name = name
+                    self.reading_fullscreen = name != "split"
                     self._focus_input()
             bindings.add("escape", key)(focus)
 
@@ -374,6 +395,8 @@ class Cleanroom(LiveLearningUX, SessionUX, ConversationUX, InteractionUX):
 
         @bindings.add("c-c", eager=True)
         def interrupt(event):
+            if self.native_selection or self._copy_reading(only_selection=True):
+                return
             if self.question is not None and (not self.question.inline or self.active_input == "agent"):
                 self._cancel_question()
             elif not self.readonly and (self.owner_input if self.active_input == "owner" else self.input).text:
@@ -389,6 +412,7 @@ class Cleanroom(LiveLearningUX, SessionUX, ConversationUX, InteractionUX):
             "header": "bold", "frame.border": "#698b7a", "frame.label": "bold #94ae8b",
             "muted": "#8b9289", "tab.active": "bold underline #94ae8b", "tab": "#8b9289",
             "menu.selected": "reverse bold", "warning": "bold #d3a66e", "text-area": "",
+            "selected-text": "bg:#527976 fg:#ffffff",
             "owner.memo": "bg:#483619 fg:#ffe6a1", "owner.search": "bg:#153d2b fg:#bceccc",
             "pane.inactive": "#536770", "pane.agent": "bold #92c7c2",
             "pane.memo": "bold #dec383", "pane.search": "bold #91c6a5",
@@ -404,15 +428,22 @@ class Cleanroom(LiveLearningUX, SessionUX, ConversationUX, InteractionUX):
             "completion-menu.completion.current": "bg:#60795c fg:#ffffff bold",
         })
         self.app = Application(layout=Layout(root, focused_element=self.areas["agent"] if self.readonly else self.input),
-                               full_screen=True, key_bindings=bindings, mouse_support=True, style=style, output=self.output,
+                               full_screen=True, key_bindings=bindings,
+                               mouse_support=Condition(lambda: not self.native_selection), style=style, output=self.output,
                                color_depth=ColorDepth.DEPTH_1_BIT if "NO_COLOR" in os.environ else None,
                                refresh_interval=1 if os.environ.get("VERANTYX_REDUCE_MOTION") == "1" else .3)
+        self._install_reading(bindings)
         self._rendered_size = None
         def track_focus(_):
             if self.app.layout.has_focus(self.owner_input):
                 self.active_input = "owner"
             elif self.app.layout.has_focus(self.input):
                 self.active_input = "agent"
+            else:
+                for name, area in self.areas.items():
+                    if self.app.layout.has_focus(area):
+                        self.active_input = "agent" if name == "agent" else "owner"
+                        break
             size = self.output.get_size()
             dimensions = (size.columns, size.rows, self.focus_name)
             if dimensions != self._rendered_size:
@@ -431,7 +462,8 @@ class Cleanroom(LiveLearningUX, SessionUX, ConversationUX, InteractionUX):
     def _pane_width(self, name):
         size = self.output.get_size()
         split = self.focus_name == "split" and layout_mode(size.columns, size.rows) == "side"
-        return max(12, ((size.columns - 3) // 2 if split else size.columns) - 6)
+        return max(1, ((size.columns - 3) // 2 if split else size.columns)
+                   - (3 if self._compact_ui() else 6))
 
     def _body(self):
         if self.focus_name == "agent":
@@ -444,6 +476,10 @@ class Cleanroom(LiveLearningUX, SessionUX, ConversationUX, InteractionUX):
                 else self.owner_column if self.active_input == "owner" else self.agent_column)
 
     def _header(self):
+        if self.native_selection:
+            return self.native_header
+        if self._compact_ui():
+            return self._short_header()
         view = self.view or {}
         run_id = view.get("run_id") or self.selected or "no run yet"
         freshness = "Ledger read pending" if self.view is None else "Ledger synced"
@@ -469,17 +505,19 @@ class Cleanroom(LiveLearningUX, SessionUX, ConversationUX, InteractionUX):
                 from prompt_toolkit.mouse_events import MouseEventType
                 if event.event_type == MouseEventType.MOUSE_UP and self.picker is None:
                     self.focus_name = name
+                    self.reading_fullscreen = name != "split"
                     self._focus_input()
             fragments.append(("class:tab.active" if name == self.focus_name else "class:tab", "  " + name.title() + "  ", click))
         return fragments
 
     def _footer(self):
+        if self._compact_ui() or self.native_selection:
+            return self._reading_footer()
         message = self.cursor_error or self._tr("Viewing is not approval. Checks apply only to their recorded target and scope.", "台帳の表示は承認ではありません。検査は記録時点の対象に限定されます。")
         if self.read_error:
             message = self._tr("Waiting to reconnect. Last readable view: ", "DBの読み取りを再接続待ち。前回の正常な表示: ") + str((self.view or {}).get("read_at") or self._tr("none yet.", "まだありません。"))
-        if self.readonly:
-            return " F2 Menu | Alt+1..4 Views | F3 Scroll | F4 Learn | Ctrl+D Close\n " + message
-        return " " + self._ux("footer") + " | /queue  /approvals\n " + (self._review_status() or message)
+        return self._reading_footer() + "\n " + fit_text(
+            self._review_status() or message, self.output.get_size().columns - 2)
 
     def _input_title(self):
         if self.question is not None:
@@ -550,7 +588,7 @@ class Cleanroom(LiveLearningUX, SessionUX, ConversationUX, InteractionUX):
         else:
             self.owner_drafts["search"] = self.owner_input.text
             self.active_input = "agent"
-        self.focus_name = "split"
+        self.focus_name = self.active_input if self.reading_fullscreen else "split"
         self._focus_input()
         self._render()
 
@@ -568,7 +606,7 @@ class Cleanroom(LiveLearningUX, SessionUX, ConversationUX, InteractionUX):
             self._cycle_inputs()
             return True
         if self.owner_mode == "search":
-            self.focus_name = "split"
+            self.focus_name = "owner" if self.reading_fullscreen else "split"
             self._render()
             return True
         if self.note_task is not None and not self.note_task.done():
@@ -666,9 +704,12 @@ class Cleanroom(LiveLearningUX, SessionUX, ConversationUX, InteractionUX):
         if not self.picker:
             return []
         fragments = []
+        width = (self._pane_width("agent") - 6 if self._inline_choice()
+                 else min(96, self.output.get_size().columns) - 10)
         for index, (_, label) in enumerate(self.picker["choices"]):
             style = "class:menu.selected" if index == self.choice_index else ""
-            fragments.append((style, (" (o) " if index == self.choice_index else " ( ) ") + safe_text(label) + "\n"))
+            fragments.append((style, (" (o) " if index == self.choice_index else " ( ) ")
+                              + fit_text(label, width) + "\n"))
         return fragments
 
     def _focus_input(self):
@@ -900,10 +941,19 @@ class Cleanroom(LiveLearningUX, SessionUX, ConversationUX, InteractionUX):
           "quit": "Close / Leave this view"
 }
         choices = [(name, self._tr(english_labels.get(name, label), label)) for name, label in choices]
+        choices[6:6] = [("reading-fullscreen", self._rt("split" if self.reading_fullscreen else "fullscreen")),
+                        ("reading-copy", self._rt("copy")), ("reading-latest", self._rt("latest"))]
 
         def selected(value):
             if value in ("split", *self.areas):
                 self.focus_name = value
+                self.reading_fullscreen = value != "split"
+            elif value == "reading-fullscreen":
+                self._set_fullscreen()
+            elif value == "reading-copy":
+                self._copy_reading()
+            elif value == "reading-latest":
+                self._reading_jump(True)
             elif value == "history":
                 self.open_history()
             elif value == "growth":
@@ -938,7 +988,9 @@ class Cleanroom(LiveLearningUX, SessionUX, ConversationUX, InteractionUX):
             self.focus_name = "split"
 
     def _render(self):
-        from prompt_toolkit.document import Document
+        if self.native_selection:
+            self.app.invalidate()
+            return
         from .conversation_view import owner_page
         self.owner_completer.locale = self._locale()
         panes = (self.view or {}).get("panes", {})
@@ -966,11 +1018,8 @@ class Cleanroom(LiveLearningUX, SessionUX, ConversationUX, InteractionUX):
                     self.owner_lexer.rows = []
             if name == "agent":
                 body = self._primary_answer()
-            body = safe_text(body, multiline=True)
-            if body != area.text:
-                follow = name == "agent" and (not area.text or area.buffer.cursor_position >= len(area.text) - 1)
-                position = len(body) if follow else min(area.buffer.cursor_position, len(body))
-                area.buffer.set_document(Document(body, cursor_position=position), bypass_readonly=True)
+            self._set_pane_text(name, body)
+        self._set_pane_text("system", self._system_text())
         self.app.invalidate()
 
     def _growth_item(self, *, selected_only=False):

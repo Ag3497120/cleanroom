@@ -39,8 +39,10 @@ class Page:
 
     def add(self, text="", style="", *, fill=False):
         text = safe_text(str(text), multiline=True).replace("\t", "    ")
-        for line in _wrapped(text, self.width) if fill else text.split("\n"):
-            self.lines.append(line + " " * max(0, self.width - get_cwidth(line)) if fill else line)
+        # Keep source lines intact. The reading viewport wraps and shades rows,
+        # retaining a reversible mapping for selection, copying and resizing.
+        for line in text.split("\n"):
+            self.lines.append(line)
             self.styles.append(style)
 
     def section(self, title):
