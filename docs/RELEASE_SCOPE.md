@@ -23,6 +23,14 @@ a person has mastered a skill, or that a configured external process is isolated
 
 The full suite initially lacked the optional MCP package in the isolated release environment. After installing core[mcp], all 30 notebook-connection and Codex tests passed. These overlap the full-suite counts; they are not thirty additional independent cases. The 10 skips comprise two external Vera MCP integration cases and eight optional historical-fixture cases. CI now installs the MCP extra and runs these regression modules.
 
+The added CI job also exposed an accidental dependency in the artificial Codex test fixture: configuration discovery required a real Codex installation. The fixture now selects its own deterministic executable. The 64-test regression group passes without relying on an installed or authenticated Codex; those tests are not live-model results.
+
+### Public entry points
+
+- [verantyx.ai](https://verantyx.ai/) is the public main site.
+- [GitHub Pages](https://ag3497120.github.io/cleanroom/) is the public repository preview.
+- The Vercel deployment completed, but its deployment-specific URL redirects unauthenticated visitors to Vercel login. Use the public URLs above for announcements; deployment success alone does not mean anonymous access is enabled.
+
 The browser checks cover Shift+Enter, continuous conversation, draft/history,
 empty-Enter pane switching, private memos, search, reference completion,
 temporary chat, non-focus-stealing change review, arrow-key approval,
@@ -111,6 +119,9 @@ for the separate CLI GIF/MP4 workflow.
 Pythonの通しテストでは1,005件と862件のサブテストが成功し、10件がスキップされました。
 MCP依存の未導入で失敗した1件は、依存追加後に関連30件とともに再実行して成功しました。
 この30件には通し検査と重なるものがあり、単純に合算していません。
+CI用の人工Codexフィクスチャも実CLIのインストールに依存しない形へ直し、関連64件の成功を確認しました。
+告知先は公開アクセスを確認した verantyx.ai またはGitHub Pagesを使ってください。
+Vercelの配信固有URLは、配信成功とは別にログイン保護が有効です。
 スキップは外部Vera MCP連携2件と、任意の過去版フィクスチャ8件です。これとは別に、Cross 6件、
 WebのNodeテスト9件、ブラウザ操作14項目、独立したCLI入口8項目を確認しました。
 スキップした検査を合格へ数え替えていません。

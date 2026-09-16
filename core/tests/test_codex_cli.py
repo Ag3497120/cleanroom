@@ -31,6 +31,12 @@ class CodexCliTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory(prefix="verantyx-codex-test-")
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
+        # Protocol fixtures must not require an installed or authenticated Codex.
+        # The generated executable is local and deterministic, never a model.
+        discovery = mock.patch("verantyx.subscription_cli.find_executable",
+                               return_value=str(self.fake_executable()))
+        discovery.start()
+        self.addCleanup(discovery.stop)
         self.created = commands_codex.create_configs(self.root / "session")
         self.configs = {role: codex_cli.load_config(path) for role, path in self.created["adapters"].items()}
         for value in self.configs.values():
