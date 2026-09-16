@@ -37,21 +37,22 @@ def _start(prompt):
 
 
 def _pick(title, rows, label):
-    from .cli import visible
+    from .choice_navigation import choose, description
+    from .interaction_text import locale
     if not rows:
-        print(title + ": まだ記録がありません。")
+        print(title + ": no entries")
         return None
-    if owner_io.get() is not None:
-        selected = owner_io.get().choose(title, [(index, label(row)) for index, row in enumerate(rows)])
-        return None if selected is None else rows[selected]
-    print("\n" + title)
-    for i, row in enumerate(rows, 1):
-        print(str(i) + ". " + visible(label(row)))
-    value = _ask("番号（0: 戻る）", "0")
-    if not value.isdigit() or not 1 <= int(value) <= len(rows):
-        return None
-    return rows[int(value) - 1]
-
+    session = owner_io.get()
+    lang = session.configuration["ui"]["locale"] if session is not None else locale()
+    choices = [(index, label(row)) for index, row in enumerate(rows)]
+    descriptions = {index: description(title, row, label(row), lang) for index, row in enumerate(rows)}
+    if session is not None:
+        selected = session.choose(title, choices, descriptions=descriptions,
+                                  aliases={str(row).casefold(): index for index, row in enumerate(rows)
+                                           if isinstance(row, (str, int, bool))})
+    else:
+        selected = choose(title, choices, descriptions, lang)
+    return None if selected is None else rows[selected]
 
 def _conditions(default_target=""):
     target = _ask("検査するファイル（未指定: 検査しない）", default_target)
@@ -194,9 +195,9 @@ def _confirm_context(context_files):
         print("Enterで作業帳を開く、vで一覧、nで中止を選んでください。")
 
 
-def _new_work(root, configuration, mode, previous=None, request=None):
+def _new_work(root, configuration, mode, previous=None, request=None, attachments=()):
     from .agent_console import start_work
-    return start_work(root, configuration, mode, previous=previous, request=request)
+    return start_work(root, configuration, mode, previous=previous, request=request, attachments=attachments)
 
 
 def _legacy_new_work(root, configuration, mode, previous=None, request=None):

@@ -18,11 +18,42 @@ python3.11 -m venv .venv
 source .venv/bin/activate
 python -m pip install -e ./core
 cd /absolute/path/to/your-project
-verantyx setup accounts
+verantyx setup
 verantyx
 ~~~
 
-一つの端末をAgent / Ownerへ分割します。空欄EnterでAgent、Ownerメモ、Owner検索を巡回します。F2のメニューから設定、ノート、見方の来歴を選べます。
+### まず、操作を練習する
+
+`verantyx setup`は矢印キーとEnterで選択する設定メニューです。言語、公式CLIアカウント、API、ローカルのOllamaモデルを設定できます。初めてメニューを閉じると、モデルを呼ばず、練習内容を仕事・メモ・学習記憶に残さないチュートリアルへ進めます。画面サイズの案内は警告のみで、進行を止めません。
+
+~~~sh
+verantyx tutorial
+~~~
+
+通常画面からは`/tutorial`でも練習できます。`/done`で終了します。
+
+### 左はAgent、右はOwner
+
+回答とシステム通知を分けて表示し、操作中の入力欄を太い枠とラベルで示します。設定中のモデルは上部で確認できます。
+
+| 操作 | 動作 |
+|---|---|
+| 文章付きEnter | 送信。補完や設定の選択中は選択を優先 |
+| 空欄Enter | Agent → 黄色のメモ → 緑色の検索 → Agent |
+| Shift+Enter | 対応端末で改行。代替はAlt+Enter / Ctrl+J |
+| ↑ / ↓ | 入力欄ごとのセッション履歴と元の下書き。複数行は先頭行・最終行で操作 |
+| 項目の先頭文字 + 矢印 + Tab | Ownerの参照を依頼へ挿入 |
+| `/model` / `/verantyx` | Agent欄内でモデルやその他の設定を開く |
+| `/help` / F2 | 利用できる操作を表示 |
+
+設定への回答は`/値`、通常の依頼へ戻るには`/`なしの文章を使います。設定と`//`対話は入力履歴に含めません。端末がShift+EnterをEnterと同じ信号で送る場合は、代替キーを使ってください。
+
+`/attach "/path/to/file.pdf"`でPDF・画像を添付し、送信範囲を確認できます。PDFは`--text`で本文のみ、`--pages 1-3`でページを選択します。画像には視覚対応モデルが必要で、外部ハーネス経由の添付は未対応です。
+
+`//相談内容`はツールを使わない一時対話です。Cleanroomの仕事・日記・スキル・学習記憶へ保存しませんが、接続先サービスの保存方針は別です。
+
+[二分割画面・設定・添付・プライバシーの操作ガイド（5言語）](../docs/two-pane-interaction.md)
+
 
 
 ## ノートとモデルをつなぐ
@@ -106,7 +137,7 @@ CLIの起動はそのままにし、終了はCtrl+Cです。記録の追加はMy
 操作ガイド: [日本語](docs/OPERATIONS.ja.md) / [English](docs/OPERATIONS.en.md)。
 背景資料: [日本語原文と英語版の資料庫](docs/origins/README.md)。X投稿とAIとの議論の本文は提供待ちです。
 
-リポジトリ: [Ag3497120/verantyx](https://github.com/Ag3497120/verantyx)。起動コマンドは引き続きverantyxです。
+リポジトリ: [Ag3497120/cleanroom](https://github.com/Ag3497120/cleanroom)。起動コマンドは引き続きverantyxです。
 
 ## My Notebook / 自分の経験と日記
 

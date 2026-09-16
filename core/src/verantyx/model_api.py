@@ -127,7 +127,13 @@ def generation_policy(config, value):
 
 
 def payload(config, value):
+    from verantyx.attachment_inputs import image_inputs, public_request
+    images = image_inputs(value)
+    value = public_request(value)
     prompt = canonical(value)
+    image_urls = ["data:" + item["mime_type"] + ";base64," + item["data"] for item in images]
+    chat_content = ([{"type": "text", "text": prompt}] +
+                    [{"type": "image_url", "image_url": {"url": url}} for url in image_urls]) if images else prompt
     _require(len(prompt.encode("utf-8")) <= MAX_INPUT, "MODEL_API_INPUT_LIMIT", "DOCUMENT_LIMIT")
     provider, model, tokens = config["provider"], config["model"], config["max_output_tokens"]
     if provider in ("openai", "openai_compatible"):
@@ -135,17 +141,22 @@ def payload(config, value):
         # provider's structured-output subset. Local validation remains strict.
         if provider == "openai_compatible" and urlsplit(config["endpoint"]).path.endswith("/chat/completions"):
             return {"model": model,
-                    "messages": [{"role": "system", "content": INSTRUCTIONS}, {"role": "user", "content": prompt}],
+                    "messages": [{"role": "system", "content": INSTRUCTIONS}, {"role": "user", "content": chat_content}],
                     "max_tokens": tokens, "response_format": {"type": "json_object"}, "stream": False}
-        return {"model": model, "instructions": INSTRUCTIONS, "input": prompt,
+        return {"model": model, "instructions": INSTRUCTIONS,
+                "input": [{"role": "user", "content": [{"type": "input_text", "text": prompt}] +
+                          [{"type": "input_image", "image_url": url} for url in image_urls]}] if images else prompt,
                 "max_output_tokens": tokens, "text": {"format": {"type": "json_object"}},
                 "stream": False, "store": False, "tools": []}
     if provider == "anthropic":
-        return {"model": model, "system": INSTRUCTIONS, "messages": [{"role": "user", "content": prompt}],
+        return {"model": model, "system": INSTRUCTIONS, "messages": [{"role": "user", "content":
+                ([{"type": "text", "text": prompt}] + [{"type": "image", "source": {
+                    "type": "base64", "media_type": item["mime_type"], "data": item["data"]}} for item in images]) if images else prompt}],
                 "max_tokens": tokens, "stream": False}
     if provider == "gemini":
         return {"systemInstruction": {"parts": [{"text": INSTRUCTIONS}]},
-                "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+                "contents": [{"role": "user", "parts": [{"text": prompt}] +
+                             [{"inlineData": {"mimeType": item["mime_type"], "data": item["data"]}} for item in images]}],
                 "generationConfig": {"maxOutputTokens": tokens, "candidateCount": 1, "responseMimeType": "application/json"}}
     from verantyx.ollama_schema import output_schema
     policy = generation_policy(config, value)
@@ -237,6 +248,11 @@ def payload(config, value):
     # Endpoint choice is explicit and hashed; no implicit fallback or retry.
     content = ({"messages": [{"role": "system", "content": instructions}, {"role": "user", "content": prompt}]}
                if urlsplit(config.get("endpoint", "")).path.endswith("/api/chat") else {"system": instructions, "prompt": prompt})
+    if images:
+        if "messages" in content:
+            content["messages"][-1]["images"] = [item["data"] for item in images]
+        else:
+            content["images"] = [item["data"] for item in images]
     if agent_request:
         from verantyx.agent_schema import generation_schema, transport_schema
         output = transport_schema(generation_schema(value))
@@ -384,7 +400,8 @@ def request(config, value, observer=None):
     # before relations/cases that refer to them. Canonical hashing of recorded
     # inputs is unchanged; HTTP JSON object order has no protocol semantics.
     raw = json.dumps(payload(config, value), ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-    _require(len(raw) <= 2 * MAX_INPUT, "MODEL_API_INPUT_LIMIT", "DOCUMENT_LIMIT")
+    _require(len(raw) <= (10 * 1024 * 1024 if value.get("attachments") else 2 * MAX_INPUT),
+             "MODEL_API_INPUT_LIMIT", "DOCUMENT_LIMIT")
     headers = {"Content-Type": "application/json", "Accept": "application/json", "Accept-Encoding": "identity"}
     # Read only the explicit credential, as late as possible. It never enters
     # payloads, config hashes, journal metadata, command arguments, or errors.
@@ -408,7 +425,8 @@ def request(config, value, observer=None):
         response = connection.getresponse()
         # http.client does not follow redirects or environment proxies.
         if response.status != 200:
-            raise LedgerError("BRIDGE_OUTCOME_UNKNOWN", {"reason": "MODEL_API_HTTP_STATUS", "http_status": response.status})
+            raise LedgerError("BRIDGE_OUTCOME_UNKNOWN", {"reason": "MODEL_MEDIA_REJECTED" if value.get("attachments") and response.status in (400, 415, 422) else "MODEL_API_HTTP_STATUS",
+                                                      "http_status": response.status})
         streaming = config["provider"] == "ollama" and config.get("thinking", False)
         types = ("application/json", "application/x-ndjson") if streaming else ("application/json",)
         _require(response.getheader("Content-Type", "").split(";", 1)[0].strip().lower() in types

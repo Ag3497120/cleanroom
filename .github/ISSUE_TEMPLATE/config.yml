@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Operating guides
+    url: https://github.com/Ag3497120/cleanroom#commands
+    about: Controls, setup and multilingual documentation.
+  - name: Security reporting
+    url: https://github.com/Ag3497120/cleanroom/blob/main/SECURITY.md
+    about: Read before sharing sensitive vulnerability details.

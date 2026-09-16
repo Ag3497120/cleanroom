@@ -21,6 +21,9 @@ Explain prerequisites, omitted intermediate steps, alternatives, pitfalls and ch
 Offer a small optional next exercise and a way to use it in a future project.
 Separate RECORDED material from ADDITIONAL_EXPLANATION. Missing details remain gaps;
 do not claim that a reconstruction is the original rationale. Use only actual trace IDs.
+rejected_notes lists original notes with incomplete provenance. Preserve those gaps;
+never copy their invalid citation IDs or present them as verified. New source-linked
+explanations are separate proposals, not retroactive edits or human understanding.
 The supplied trace may be one page of a larger archive: do not claim full-work coverage.
 A summary is a second view, not a replacement for detailed parts or original sources.
 Do not require every item to be learned. Reference and delegation remain valid choices.
@@ -118,6 +121,7 @@ def prepare(root, configuration, *, skill_id=None, technology="", run_id=None, m
     elif technology:
         for row in rows:
             notes, _ = capture.notes_from_event(row["event"], refs)
+            notes += [item["note"] for item in capture.pending_notes_from_event(row["event"], refs)]
             if any(technology.casefold() in {tag.casefold() for tag in note["technology_tags"]} for note in notes):
                 selected_keys.add(row["work_key"])
         for asset in _assets():

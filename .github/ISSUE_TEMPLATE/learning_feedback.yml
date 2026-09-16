@@ -1,0 +1,23 @@
+name: Learning or notebook feedback
+description: Report a misleading suggestion, missing source or lost next-time choice.
+title: "[Notebook] "
+body:
+  - type: markdown
+    attributes:
+      value: "You do not need to disclose or justify your ability. Please use a synthetic example."
+  - type: textarea
+    id: experience
+    attributes:
+      label: What felt wrong or got lost?
+      description: For example, a suggestion ignored your pace, delegation was misread, or a note disappeared.
+    validations:
+      required: true
+  - type: textarea
+    id: desired
+    attributes:
+      label: What would have helped?
+  - type: textarea
+    id: provenance
+    attributes:
+      label: Safe reproduction and relevant version
+      description: Describe the source or chosen state without posting private logs.

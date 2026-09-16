@@ -140,8 +140,16 @@ def generation_schema(request):
     """Constrain provenance identifiers, never the model's interpretation."""
     output = schema(request)
     if request.get("format") == WORK_REQUEST:
-        from .learning_capture import note_schema
-        output["properties"]["learning_notes"] = array(note_schema(), 4)
+        from .learning_capture import note_schema, profile_refs
+        note = note_schema()
+        for field, refs in (
+                ("source_event_ids", list(dict.fromkeys(request.get("learning_sources", [])))),
+                ("profile_refs", profile_refs(request.get("personal_context", {})))):
+            if refs:
+                note["properties"][field]["items"] = {**SOURCE, "enum": refs}
+            else:
+                note["properties"][field]["maxItems"] = 0
+        output["properties"]["learning_notes"] = array(note, 4)
         output["required"].append("learning_notes")
     if request.get("format") == PERSONAL_REQUEST and request.get("mode") == "unpack":
         refs = [row["source_ref"] for row in request.get("trace", {}).get("events", [])]

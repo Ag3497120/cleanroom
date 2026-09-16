@@ -7,7 +7,7 @@ from . import personal_profile as profile
 from .skill_assets import HUMAN, ON_BOARD
 
 EXPERIENCE = tuple(value for value in HUMAN if value != "NO_RECORD")
-FEEDBACK = {"SELF_REPORTED_UNDERSTOOD": "EXPLAINED", "SELF_REPORTED_APPLIED": "APPLIED",
+FEEDBACK = {"SELF_REPORTED_UNDERSTOOD": "SELF_REPORTED", "SELF_REPORTED_APPLIED": "APPLIED",
             "SELF_REPORTED_TRANSFERRED": "TRANSFERRED"}
 
 
@@ -23,6 +23,62 @@ def _tags(values):
                               if isinstance(value, str) and value.strip()))
 
 
+def _statement_context(row):
+    """Read structured attribution, never grade or interpret the owner's words."""
+    source = row.get("source") or {}
+    result = {
+        "title": source.get("title") or row.get("technology") or row["text"][:80],
+        "technologies": _tags(source["technology_tags"]) if isinstance(source.get("technology_tags"), list)
+                        else _tags([row.get("technology", "")]),
+        "project": source.get("project_name", row.get("project_name", "")),
+    }
+    if source.get("moment_id") and "technology_tags" not in source:
+        # Older statements stored the tags as a display string. Recover them
+        # only from the exact recorded moment, not by splitting arbitrary text.
+        from .learning_moments import get
+        from .errors import LedgerError
+        try:
+            moment, note = get(source["moment_id"])
+            result.update(title=note["title"], technologies=_tags(note["technology_tags"]),
+                          project=moment.get("project_name", ""))
+        except (LedgerError, KeyError, TypeError, ValueError):
+            pass
+    return result
+
+
+def _owner_plan(row):
+    if row["kind"] == "skill_progress":
+        return row.get("plan", "")
+    if row["kind"] == "lesson":
+        return row.get("choice", "")
+    if row["kind"] == "statement" and profile.active(row):
+        return (row.get("source") or {}).get("owner_state", "")
+    return ""
+
+
+def _bookmark(row):
+    plan = _owner_plan(row)
+    if plan not in ON_BOARD:
+        return None
+    item = {
+        "record_id": row["id"], "source_kind": row["kind"], "observation": None,
+        "title": row.get("title", ""), "technologies": _tags(row.get("technology_tags", [])),
+        "project": row.get("project_name", ""), "plan": plan, "kind": None,
+        "skill_id": None, "text": "", "date": _date(row.get("updated_at") or row.get("created_at")),
+        "date_basis": "BOOKMARK_UPDATED", "authority": "OWNER_SELECTED_BOOKMARK",
+    }
+    if row["kind"] == "skill_progress":
+        item.update(skill_id=row["asset_id"], text=row.get("note", ""),
+                    kind=row.get("human") if row.get("human") in EXPERIENCE else None)
+    elif row["kind"] == "lesson":
+        item.update(technologies=_tags([row.get("technology", "")]),
+                    text=next((feedback.get("text", "") for feedback in reversed(row.get("feedback", []))
+                               if feedback.get("choice") == plan), "") or row.get("minimum_step", ""))
+    else:
+        item.update(_statement_context(row), text=row["text"])
+    return item
+
+
 def _entries(row):
     """Titles may be AI-proposed. The experience claim must be an owner record."""
     kind = row["kind"]
@@ -33,10 +89,15 @@ def _entries(row):
                "kind": row["human"], "date": _date(row.get("updated_at")), "text": row.get("note", ""),
                "date_basis": "RECORD_UPDATED", "skill_id": row["asset_id"]}
     elif kind == "statement" and row.get("category") in ("experience", "understanding") and profile.active(row):
-        yield {**common, "title": row.get("technology") or row["text"][:80],
-               "technologies": _tags([row.get("technology", "")]), "kind": "SELF_REPORTED",
+        state = (row.get("source") or {}).get("owner_state")
+        if state and state not in EXPERIENCE:
+            # Deferral, questions, reference and delegation are choices, not
+            # experiences or evidence that the person did not understand.
+            return
+        yield {**common, **_statement_context(row), "kind": state or "SELF_REPORTED",
                "date": _date(row.get("updated_at") or row.get("created_at")), "text": row["text"],
-               "date_basis": "RECORD_UPDATED", "skill_id": None}
+               "date_basis": "RECORD_UPDATED", "skill_id": None,
+               "provenance_status": (row.get("source") or {}).get("provenance_status")}
     elif kind == "lesson":
         for index, item in enumerate(row.get("feedback", [])):
             state = FEEDBACK.get(item.get("choice"))
@@ -82,15 +143,12 @@ def snapshot(*, search="", technology="", kind="", project="", month="", offset=
                          if db is not None else {})
         revision = profile._meta(db, "revision", 0)
         for row in _rows(db):
-            if row["kind"] == "skill_progress":
-                policies[row.get("plan", "UNSELECTED")] += 1
-                if row.get("plan") in ON_BOARD:
-                    bookmark_total += 1
-                    if len(bookmarks) < 12:
-                        bookmarks.append({"record_id": row["id"], "skill_id": row["asset_id"],
-                            "title": row["title"], "technologies": _tags(row.get("technology_tags", [])),
-                            "project": row.get("project_name", ""), "plan": row["plan"],
-                            "kind": row["human"] if row.get("human") in EXPERIENCE else None})
+            policies[_owner_plan(row)] += 1
+            bookmark = _bookmark(row)
+            if bookmark is not None:
+                bookmark_total += 1
+                if len(bookmarks) < 12:
+                    bookmarks.append({key: value for key, value in bookmark.items() if key != "text"})
             for entry in _entries(row):
                 all_total += 1
                 all_technologies.update(entry["technologies"])
@@ -165,14 +223,15 @@ def detail(identity, observation=None):
                         "ATLAS_RECORD")
         entries = list(_entries(row))
         entry = next((item for item in entries if item["observation"] == observation), None)
-        if entry is None and row["kind"] == "skill_progress" and row.get("plan") in ON_BOARD and observation is None:
-            entry = {"record_id": identity, "source_kind": row["kind"], "observation": None,
-                     "title": row["title"], "technologies": _tags(row.get("technology_tags", [])),
-                     "kind": None, "date": _date(row.get("updated_at")), "text": row.get("note", ""),
-                     "project": row.get("project_name", ""), "skill_id": row["asset_id"],
-                     "date_basis": "BOOKMARK_UPDATED", "authority": "OWNER_SELECTED_BOOKMARK"}
+        if entry is None and observation is None:
+            entry = _bookmark(row)
         profile.require(entry is not None, "ATLAS_RECORD")
         result = {**entry, "read_only": True}
+        if row["kind"] == "statement":
+            result["provenance"] = row.get("source", {})
+        elif row["kind"] == "lesson":
+            result["provenance"] = {key: row.get(key) for key in
+                                    ("project_name", "work_key", "source_event_ids", "previous_id")}
         if row["kind"] == "skill_progress":
             asset = profile._get(db, row["asset_id"])
             result.update(plan=row["plan"], ai_use=row["ai_use"], share_with_ai=row.get("share_with_ai", False))

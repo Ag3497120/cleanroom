@@ -1,9 +1,22 @@
 WEBVTT
 
-00:00.000 --> 00:08.000
-The real Cleanroom CLI, operated with scripted demo data.
-No model calls, test receipts or mastery claims are made.
+00:00.000 --> 00:02.800
+Ask normally. Agent works on the left; your notebook stays on the right.
 
-00:08.000 --> 00:20.000
-Empty Enter changes the active input: Agent, Memo, Search.
-Wheel and Page keys move the active pane. The other view stays in place.
+00:02.800 --> 00:07.000
+An optional explanation arrives in Owner while work proceeds. No mastery is inferred.
+
+00:07.000 --> 00:11.300
+Empty Enter opens your yellow memo. Saving it does not send it to AI.
+
+00:11.300 --> 00:15.000
+Empty Enter switches to green local search.
+
+00:15.000 --> 00:19.000
+Type a prefix, choose with arrows, insert an exact reference with Tab.
+
+00:19.000 --> 00:23.000
+Page keys scroll only the active pane.
+
+00:23.000 --> 00:28.000
+F2 opens actions, including your profile, journal, skills and next-time choices.

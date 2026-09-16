@@ -1,0 +1,20 @@
+Cleanroom notices
+=================
+
+The MIT License applies to the original Cleanroom code and documentation
+whose rights are held by this project's authors and contributors.
+
+Dependencies, vendored material and third-party assets retain their own
+licenses and copyright notices. This repository does not relicense them.
+Provider services, model weights and account subscriptions have their own
+terms. The Cleanroom MIT License does not grant access to those services.
+
+The supplied Japanese X-post excerpt and its editorial translation under
+core/docs/origins are third-party quotation material, not a grant of MIT
+rights to the original post. Its author, URL and publication date have not
+yet been supplied. Do not infer permission to reuse the original post from
+the repository license. A rights holder may request attribution or removal
+via a minimal issue, without posting private information.
+
+The author's personal, non-commercial motivation is a statement of intent,
+not a restriction on the commercial use permitted by MIT.

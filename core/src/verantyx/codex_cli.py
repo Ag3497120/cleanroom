@@ -143,12 +143,15 @@ def _invoke(config, value, on_usage):
     from verantyx.codex_wire import EDITOR, PLAN, RESPONSE, editor_contract, plan_contract, response_contract, validate_envelope
     from verantyx.codex_wire import is_skill_proposal, skill_proposal_contract
     from verantyx.agent_schema import FORMATS as AGENT_FORMATS, native_contract
+    from verantyx.attachment_inputs import image_inputs, public_request
+    images = image_inputs(value)
+    public_value = public_request(value)
     agent_wire = value["format"] in AGENT_FORMATS
     editor_wire = value["format"] == EDITOR
     plan_wire = value["format"] == PLAN
     response_wire = value["format"] == RESPONSE
     skill_wire = is_skill_proposal(value)
-    wire_value, envelope_schema = (native_contract(value) if agent_wire else
+    wire_value, envelope_schema = (native_contract(public_value) if agent_wire else
                                    editor_contract(value) if editor_wire else
                                    plan_contract(value) if plan_wire else
                                response_contract(value) if response_wire else
@@ -164,7 +167,13 @@ def _invoke(config, value, on_usage):
         schema_path.write_text(canonical(envelope_schema), encoding="utf-8")
         cwd = directory / "empty"
         cwd.mkdir()
-        process = subprocess.Popen(_argv(config, schema_path), cwd=cwd, env=_environment(), shell=False,
+        arguments = _argv(config, schema_path)
+        for index, item in enumerate(images):
+            import base64
+            image_path = directory / ("attachment-" + str(index) + ".jpg")
+            image_path.write_bytes(base64.b64decode(item["data"], validate=True))
+            arguments[-1:-1] = ["--image", str(image_path)]
+        process = subprocess.Popen(arguments, cwd=cwd, env=_environment(), shell=False,
                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                    bufsize=0, start_new_session=False)
         selector = selectors.DefaultSelector()

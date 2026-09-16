@@ -6,7 +6,8 @@ Input, empty-Enter cycling, local memo storage, search, reference completion, pa
 
 It is not a real-model evaluation, a sandbox test, or proof that a project was implemented.
 No credentials, personal profile, real workspace files or prior conversations are read.
-The recording has a permanent fixture label.
+The recording has a permanent fixture label. The fixture config explicitly sets `ui.locale` to `en`.
+English chapter captions and key hints explain each action. They describe the interaction, not model performance.
 
 ## Reproduce
 
@@ -28,15 +29,19 @@ macOS uses system Menlo and Hiragino fonts. On Linux, provide a suitable monospa
 The scripted process uses a fresh temporary directory which is removed after capture.
 It never uses a real project as its fixture.
 
-## What is shown
+## What is shown in under 30 seconds
 
-1. A normal Agent request.
+1. A normal English Agent request, visible in the opening seconds.
 2. Fixture work and an Owner learning proposal.
 3. Empty Enter to the yellow memo; a real local note is saved in the temporary fixture.
 4. Empty Enter to the green search field.
 5. Return to Agent; type an Owner prefix and press Tab.
 6. Page scrolling in the active pane; the other pane's viewport is independent.
-7. The existing F2 menu.
+7. The existing F2 menu: profile, journal, skills and next-time options.
+
+The recorder uses the same Python interpreter as its launcher, an isolated temporary
+workspace, and public fixture data. No real-model call is made. The permanent caption
+remains in GIF, MP4 and poster. Timed VTT tracks provide five-language captions.
 
 実モデルの結果と誤解させないため、録画内・README・Webの横の説明にデモデータであることを表示します。
 実プロジェクトや私的なノートをこの録画に混ぜないでください。

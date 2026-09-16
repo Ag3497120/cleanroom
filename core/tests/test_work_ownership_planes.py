@@ -194,7 +194,7 @@ class Planes(TestCase):
             "reviewer_adapter": ".verantyx/model-adapters/chosen/verification.json",
         }
         config.validate(self.cfg)
-        self.assertEqual(selected_work(self.root, self.cfg), str(creator))
+        self.assertEqual(selected_work(self.root, self.cfg), str(creator.resolve()))
         self.assertFalse((profile / "verification.json").exists())
 
     def test_reflection_off_saves_only_work_facts(self):
@@ -249,3 +249,112 @@ class Planes(TestCase):
         output = work("A normal answer")
         self.assertEqual(validate_envelope({"document": output}, envelope, editor=False), output)
         self.assertTrue(Draft202012Validator(output_schema(request)).is_valid(output))
+
+    def test_owner_choice_and_private_note_survive_next_work_and_reorganization(self):
+        from verantyx import owner_experience as owner
+        from verantyx.development_console import _mutate
+        from verantyx.domain.codec import canonical
+        def call(root, adapter, request, **kwargs):
+            if request['format'] == REFLECTION_REQUEST:
+                return self.model(reflection(request, text='A project-linked principle'))
+            if request['request'] == 'Next with retained ownership':
+                context = request['project_context']['owner_experience']
+                self.assertNotIn('PRIVATE-NOTE-TEST', canonical(request))
+                self.assertIn('SHARED-DESIGN-TEST', canonical(context))
+                self.assertEqual(context['ownership_choices'][0]['target'], 'DELEGATE')
+                self.assertEqual(context['ownership_choices'][0]['authority'],
+                                 'LEARNING_PREFERENCE_NOT_EXECUTION_PERMISSION')
+                self.assertEqual(context['human_mastery'], 'NOT_ASSESSED')
+            return self.model(work('Recorded work answer'))
+        with mock.patch.object(runtime, 'invoke', side_effect=call):
+            first = self.run_agent('Synthetic owner test fixture')
+            item = owner.cards(first['state'])[0]
+            _mutate(self.root, self.cfg, owner.choose, first['run_id'], item['reference'],
+                    'SELECT_TARGET', target='DELEGATE', reason='Synthetic test selection')
+            _mutate(self.root, self.cfg, owner.add_note, first['run_id'],
+                    reference=item['reference'], text='PRIVATE-NOTE-TEST', share_with_ai=False)
+            _mutate(self.root, self.cfg, owner.decide, first['run_id'],
+                    statement='SHARED-DESIGN-TEST', reason='Synthetic fixture, not user testimony')
+            second = self.run_agent('Next with retained ownership')
+            organized = runtime.organize(self.root, self.cfg, first['run_id'],
+                                         adapter=str(self.adapter), key='later-interpretation')
+        original = next(row for row in owner.cards(organized['state']) if row['reference'] == item['reference'])
+        self.assertEqual(original['target'], 'DELEGATE')
+        self.assertFalse(original['target_is_suggestion'])
+        self.assertEqual(original['human_notes'][0]['text'], 'PRIVATE-NOTE-TEST')
+        self.assertEqual(original['human_understanding'], 'NOT_ASSESSED')
+        self.assertTrue(second['ok'])
+        self.assertFalse(owner.project(owner.read_states(self.root, self.cfg), self.cfg)['writes'])
+
+    def test_timeout_keeps_incrementally_saved_files_and_does_not_repeat_work(self):
+        def call(root, adapter, request, **kwargs):
+            if request['format'] == REFLECTION_REQUEST:
+                return self.model({'format': 'verantyx.reflection-proposal.v1', 'owner_items': []})
+            if not request['turns']:
+                return self.model(work('Saved part one', [tool('write_candidate', 'part.txt', 'Persisted')], 'CONTINUE'))
+            raise LedgerError('BRIDGE_TIMEOUT')
+        with mock.patch.object(runtime, 'invoke', side_effect=call) as model:
+            first = self.run_agent(key='interrupted')
+            calls = model.call_count
+            second = self.run_agent(key='interrupted')
+        self.assertEqual(first['work']['status'], 'PARTIAL')
+        self.assertEqual(first['work']['reason'], 'BRIDGE_TIMEOUT')
+        self.assertEqual(second['work'], first['work'])
+        self.assertEqual(model.call_count, calls)
+        artifact = first['work']['artifacts'][0]
+        self.assertEqual((self.root / artifact['storage_path']).read_text(), 'Persisted')
+        self.assertFalse((self.root / 'part.txt').exists())
+
+    def test_continuation_keeps_old_files_and_reads_their_recorded_versions(self):
+        def call(root, adapter, request, **kwargs):
+            if request['format'] == REFLECTION_REQUEST:
+                return self.model({'format': 'verantyx.reflection-proposal.v1', 'owner_items': []})
+            if request['request'] == 'Create':
+                return self.model(work('Created', [
+                    tool('write_candidate', 'index.html', 'v1', 'html'),
+                    tool('write_candidate', 'style.css', 'kept', 'css')]))
+            if not request['turns']:
+                self.assertEqual({row['path'] for row in request['candidate_manifest']}, {'index.html', 'style.css'})
+                return self.model(work('Read previous candidate', [tool('read_candidate', 'index.html')], 'CONTINUE'))
+            self.assertEqual(request['tool_receipts'][0]['text'], 'v1')
+            return self.model(work('Updated', [tool('write_candidate', 'index.html', 'v2')]))
+        with mock.patch.object(runtime, 'invoke', side_effect=call):
+            first = self.run_agent('Create')
+            second = self.run_agent('Update', continue_from=first['run_id'])
+        self.assertTrue(second['ok'])
+        folder = self.root / second['work']['artifact_directory']
+        self.assertEqual((folder / 'index.html').read_text(), 'v2')
+        self.assertEqual((folder / 'style.css').read_text(), 'kept')
+        old = self.root / first['work']['artifact_directory']
+        self.assertEqual((old / 'index.html').read_text(), 'v1')
+        self.assertFalse((self.root / 'index.html').exists())
+
+    def test_opaque_asset_copy_is_scoped_and_never_sent_as_model_text(self):
+        from verantyx.domain.codec import canonical
+        raw = b'OPAQUE_ASSET_CONTENT' * 5000
+        (self.root / 'dependency.bin').write_bytes(raw)
+        def call(root, adapter, request, **kwargs):
+            self.assertNotIn('OPAQUE_ASSET_CONTENT', canonical(request))
+            if request['format'] == REFLECTION_REQUEST:
+                return self.model({'format': 'verantyx.reflection-proposal.v1', 'owner_items': []})
+            return self.model(work('Copied the approved bytes', [
+                tool('copy_asset', 'vendor/dependency.bin', 'dependency.bin')]))
+        with mock.patch.object(runtime, 'invoke', side_effect=call):
+            result = self.run_agent(assets=['dependency.bin'])
+        self.assertTrue(result['ok'])
+        artifact = result['work']['artifacts'][0]
+        self.assertEqual(artifact['sha256'], hashlib.sha256(raw).hexdigest())
+        self.assertEqual((self.root / result['work']['artifact_directory'] / 'vendor/dependency.bin').read_bytes(), raw)
+
+    def test_changed_asset_is_refused_and_not_promoted(self):
+        (self.root / 'dependency.bin').write_bytes(b'original')
+        def call(root, adapter, request, **kwargs):
+            if request['format'] == REFLECTION_REQUEST:
+                return self.model({'format': 'verantyx.reflection-proposal.v1', 'owner_items': []})
+            (self.root / 'dependency.bin').write_bytes(b'changed')
+            return self.model(work('Attempt copy', [tool('copy_asset', 'vendor/item.bin', 'dependency.bin')]))
+        with mock.patch.object(runtime, 'invoke', side_effect=call):
+            result = self.run_agent(assets=['dependency.bin'])
+        self.assertEqual(result['work']['status'], 'PARTIAL')
+        self.assertEqual(result['work']['artifacts'], [])
+        self.assertEqual(result['state']['work_tools'][0]['reason'], 'WORK_CANDIDATE_CHANGED')

@@ -21,7 +21,8 @@ Do not quote private profile details in project notes. profile_refs can identify
 explicit shared statements; unknown experience is not inexperience.
 Each note has title, target_kind (SKILL, TECHNOLOGY, BOTH), technology_tags,
 explanation, prerequisites, expanded_steps, alternatives, pitfalls, verification,
-next_small_step, source_event_ids and profile_refs. Use learning_sources for citations.
+next_small_step, source_event_ids and profile_refs. source_event_ids may use ONLY
+learning_sources, never profile IDs. Put shared profile IDs in profile_refs instead.
 Empty notes are valid; usually zero to two useful notes suffice, with at most four.
 The host binds the note to this actual turn and separately records tool results.
 A planned write/check is not a completed operation. These notes never block work,
@@ -71,6 +72,47 @@ def notes_from_event(event, known_refs):
     return accepted, rejected
 
 
+def pending_notes_from_event(event, known_refs):
+    """Expose incomplete notes without treating their claims as cited evidence.
+
+    The original event is unchanged. A pending ID uses the raw index, separate
+    from the historical accepted-note indexes used by learning_moments.
+    """
+    _, errors = notes_from_event(event, known_refs)
+    raw = event.get("payload", {}).get("proposal", {}).get("learning_notes", [])
+    pending = []
+    for error in errors:
+        index = error.get("index", 0)
+        value = raw[index] if isinstance(raw, list) and index < len(raw) else raw
+        if error["reason"] == "UNKNOWN_SOURCE":
+            note = deepcopy(value)
+        else:
+            note = {
+                "title": "Explanation awaiting source review",
+                "target_kind": "BOTH", "technology_tags": [], "explanation": "",
+                "prerequisites": [], "expanded_steps": [], "alternatives": [],
+                "pitfalls": [], "verification": [], "next_small_step": "",
+                "source_event_ids": [], "profile_refs": [],
+            }
+            if isinstance(value, dict) and isinstance(value.get("title"), str):
+                note["title"] = value["title"][:240] or note["title"]
+        note.update(recorded_in=event["source_ref"], provenance_status="PENDING_SOURCE_REVIEW",
+                    authority="AI_EXPLANATION_PENDING_PROVENANCE_NOT_EVIDENCE_OR_MASTERY",
+                    diagnostics=[deepcopy(error)])
+        pending.append({"index": index, "note": note, "diagnostic": deepcopy(error)})
+    return pending
+
+
+def note_status(events):
+    refs = {event["source_ref"] for event in events}
+    accepted, pending = 0, []
+    for event in events:
+        notes, errors = notes_from_event(event, refs)
+        accepted += len(notes)
+        pending.extend(errors)
+    return {"accepted": accepted, "pending": len(pending), "diagnostics": pending}
+
+
 def capture_safe(configuration, state, *, personal_context=None):
     """A failed personal index never cancels a committed work event."""
     try:
@@ -108,7 +150,8 @@ def capture_safe(configuration, state, *, personal_context=None):
                 added += 1
         from .notebook_bridge import auto_sync
         vault = auto_sync()
-        return {"status": "RECORDED", "added": added, "vault": vault, "work_result_unchanged": True}
+        return {"status": "RECORDED", "added": added, "vault": vault,
+                "learning_notes": note_status(events), "work_result_unchanged": True}
     except Exception as error:
         return {"status": "PERSONAL_INDEX_DEFERRED", "reason": getattr(error, "code", type(error).__name__),
                 "project_events_retained": True, "work_result_unchanged": True}
@@ -128,12 +171,14 @@ def topics():
     by_name = {}
     for row in rows:
         notes, _ = notes_from_event(row["event"], refs)
-        for note in notes:
+        pending = pending_notes_from_event(row["event"], refs)
+        for note, status in [(note, "notes") for note in notes] + [(item["note"], "pending") for item in pending]:
             for name in note["technology_tags"]:
-                item = by_name.setdefault(name, {"technology": name, "work_keys": set(), "notes": 0})
+                item = by_name.setdefault(name, {"technology": name, "work_keys": set(), "notes": 0, "pending": 0})
                 item["work_keys"].add(row["work_key"])
-                item["notes"] += 1
-    return [{"technology": name, "works": len(value["work_keys"]), "notes": value["notes"]}
+                item[status] += 1
+    return [{"technology": name, "works": len(value["work_keys"]),
+             "notes": value["notes"], "pending": value["pending"]}
             for name, value in sorted(by_name.items())]
 
 

@@ -561,12 +561,15 @@ def main(argv=None):
             return setup(root, existing, expected, locale, args, bool(options.lang), as_json)
         if args.command == "tutorial":
             if sys.stdin.isatty() and sys.stdout.isatty() and not as_json:
-                if existing is not None:
-                    from .authority import command_scope
-                    with command_scope(root, existing, args):
-                        return setup(root, existing, expected, locale, args, bool(options.lang), as_json, show_guide=True)
-                return setup(root, existing, expected, locale, args, bool(options.lang), as_json, show_guide=True)
-            guide(locale, as_json)
+                from .onboarding_walkthrough import offer
+                offer(root, existing or config.defaults(root, locale), force=True)
+            else:
+                from .interaction_text import help_text as interaction_help
+                if as_json:
+                    emit({"command": "tutorial", "locale": locale, "text": interaction_help(locale),
+                          "simulated": True, "model_calls": 0, "writes": False})
+                else:
+                    print(interaction_help(locale))
             return 0
         if args.command is None and sys.stdin.isatty() and sys.stdout.isatty() and not as_json:
             onboarding = existing is None

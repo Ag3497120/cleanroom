@@ -21,6 +21,9 @@ def failure_message(code):
 
 
 def show_result(root, result):
+    from .cleanroom_io import current
+    if current.get() is not None:
+        return  # The TUI projects the result once; receipts are not activity logs.
     from .owner_notebook import show_receipt
     return show_receipt(root, result)
 
@@ -61,15 +64,16 @@ def _connection(root, configuration, role):
         from .subscription_setup import configure as connect_subscription
         return connect_subscription(root, configuration, provider, role=role)
     preset = ui._MODEL_PRESETS[provider]
-    available = ollama_models() if provider == "ollama" else []
+    endpoint = preset["endpoint"]
+    if provider in ("ollama", "openai_compatible"):
+        endpoint = ui._ask("Server endpoint (HTTPS or HTTP loopback / SSH tunnel)", endpoint)
+    available = ollama_models(endpoint) if provider == "ollama" else []
     model = ui._pick("Installed local models", available, str) if available else None
     if model is None:
         model = ui._ask("Model name (blank to cancel)")
     if not model:
         return
-    endpoint = preset["endpoint"].format(model=model)
-    if provider in ("ollama", "openai_compatible"):
-        endpoint = ui._ask("Server endpoint", endpoint)
+    endpoint = endpoint.format(model=model)
     print("Credentials remain in " + (preset["key_env"] or "the configured local server") + "; no API key is stored here.")
     parameters = dict(provider=preset["provider"], model=model, endpoint=endpoint,
                       key_env=preset["key_env"], allow_loopback_http=preset["loopback"])
@@ -82,6 +86,12 @@ def _connection(root, configuration, role):
 
 
 def configure(root, configuration):
+    from .interaction_text import language
+    with language(configuration):
+        return _configure(root, configuration)
+
+
+def _configure(root, configuration):
     from . import development_console as ui
     from .model_settings import describe
     while True:
@@ -129,7 +139,7 @@ def organize_menu(root, configuration, run_id=None):
     show_result(root, result)
 
 
-def start_work(root, configuration, mode, previous=None, request=None):
+def start_work(root, configuration, mode, previous=None, request=None, attachments=()):
     import json
     from . import development_console as ui
     from .development import run_work
@@ -137,7 +147,16 @@ def start_work(root, configuration, mode, previous=None, request=None):
     request = request if request is not None else ui._ask("What shall we work on?")
     if not request:
         return
+    from .attachment_inputs import selections
+    from .interaction_text import tr
+    attachments = selections(request, attachments)
     files = ui._context_files(root)
+    if attachments:
+        print(tr("attachments", configuration["ui"]["locale"]))
+        for item in attachments:
+            print(terminal_text(item["path"]) + (" / PDF text only" if item["text_only"] else " / page images + available text")
+                  + (" / pages " + str(item["pages"]) if item["pages"] else ""))
+        print(tr("attachment_help", configuration["ui"]["locale"]))
     from .work_harness import snapshot as harness_snapshot
     harness = harness_snapshot(root)
     print("Work runtime: " + terminal_text(harness["label"]))
@@ -166,6 +185,6 @@ def start_work(root, configuration, mode, previous=None, request=None):
     with owner_input(record_technology), owner_confirmation(confirm_model):
         result = ui._mutate(root, configuration, run_work, request=request, key=ui._key(),
                             include=files, mode=mode, target=None, expectations=[],
-                            continue_from=previous["run_id"] if previous else None)
+                            continue_from=previous["run_id"] if previous else None, attachments=attachments)
     show_result(root, result)
     return result

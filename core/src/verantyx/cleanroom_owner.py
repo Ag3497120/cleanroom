@@ -28,6 +28,12 @@ KINDS = {"request": "指示", "note": "自分のメモ", "decision": "人間の�
          "evidence": "検査記録", "unknown": "未解決", "response": "回答候補・内容未検証"}
 
 
+KINDS_EN = {"request": "Your request", "note": "Your memo", "decision": "Human decision",
+            "question": "Your decision needed", "assumption": "AI assumption", "candidate": "Candidate",
+            "learning": "Optional insight", "evidence": "Check receipt", "unknown": "Not checked",
+            "response": "Proposed answer / unverified"}
+
+
 def _location(root):
     directory = Path(root) / ".verantyx"
     if directory.is_symlink() or not directory.is_dir():
@@ -149,13 +155,17 @@ def catalogue(view, notes=()):
         items.append(make_item("note", note["body"].splitlines()[0], note["body"], source_ref="owner-note:" + note["id"],
                                run_id=note.get("run_id"), revision=note["body_sha256"]))
     for turn in state.get("work_turns", []):
-        from .learning_capture import notes_from_event
+        from .learning_capture import notes_from_event, pending_notes_from_event
         event = {"source_ref": turn["source_ref"], "payload": {"proposal": turn["proposal"]}}
         refs = {entry["source_ref"] for field in ("work_turns", "work_tools") for entry in state.get(field, [])}
         refs.update(event["project_id"] + ":" + event["event_id"] for event in state.get("work_trace_events", []))
         notes, _ = notes_from_event(event, refs)
         for note in notes:
             add("learning", note["title"], {**note, "status": "RECORDED_DURING_WORK_NOT_MASTERY"}, turn["source_ref"])
+        for item in pending_notes_from_event(event, refs):
+            note = item["note"]
+            add("learning", "Source review pending: " + note["title"],
+                {**note, "status": "PENDING_SOURCE_REVIEW"}, turn["source_ref"])
     for row in view.get("human_decisions", []):
         add("decision", row.get("reason") or row.get("choice") or "人間の判断", row, row.get("source_ref"))
     question = view.get("question")
@@ -192,10 +202,10 @@ def normal(value):
 
 def search(items, query):
     terms = normal(query).split()
-    return [item for item in items if all(term in normal(item["label"] + "\n" + item["text"] + "\n" + KINDS[item["kind"]]) for term in terms)]
+    return [item for item in items if all(term in normal(item["label"] + "\n" + item["text"] + "\n" + KINDS[item["kind"]] + "\n" + KINDS_EN[item["kind"]]) for term in terms)]
 
 
-def _item_preview(item):
+def _item_preview(item, *, locale="ja"):
     """Keep machine-readable references intact; show their human-facing fields."""
     raw = item["text"]
     if item["kind"] in ("request", "note", "response", "assumption"):
@@ -211,10 +221,13 @@ def _item_preview(item):
         text = value.get(key)
         if isinstance(text, str) and text and text != item["label"] and text not in fragments:
             fragments.append(text)
-    return " / ".join(fragments) or "出典・条件付きの記録。参照候補として選択できます。"
+    return " / ".join(fragments) or ("Source-linked record; select it as a reference." if locale == "en" else "出典・条件付きの記録。参照候補として選択できます。")
 
 
-def render_owner(view, items, query=""):
+def render_owner(view, items, query="", *, locale="ja"):
+    kinds = KINDS_EN if locale == "en" else KINDS
+    def tr(en, ja):
+        return en if locale == "en" else ja
     matched = search(items, query)
     projection = view.get("ownership_projection")
     if projection is not None and not query:
@@ -224,42 +237,42 @@ def render_owner(view, items, query=""):
         lines = notebook_lines(projection, owner=True, learning_limit=3)
         moments = [item for item in matched if item["kind"] == "learning"]
         if moments:
-            lines += ["", "DURING WORK / 作業中の説明。本人の理解判定ではありません"]
+            lines += ["", tr("DURING WORK / Recorded explanations, not a mastery assessment", "DURING WORK / 作業中の説明。本人の理解判定ではありません")]
             lines += [safe_text(item["label"]) for item in moments[-4:]]
         notes = [item for item in matched if item["kind"] == "note"]
         if notes:
-            lines += ["", "LOCAL JOTTINGS / 自分用・自動送信なし"]
+            lines += ["", tr("LOCAL JOTTINGS / Private unless you choose to share", "LOCAL JOTTINGS / 自分用・自動送信なし")]
             for item in notes[:5]:
                 lines += [safe_text(item["label"]), safe_text(item["text"], multiline=True)]
         links = [item for item in matched if item["kind"] in ("request", "candidate")]
         if links:
-            lines += ["", "NOTEBOOK INDEX / 先頭の文字から参照できます"]
-            lines += [KINDS[item["kind"]] + "  " + safe_text(item["label"]) for item in links[:10]]
-        lines += ["", "空欄のEnterでメモ・検索へ。Agent入力の候補は矢印で選びTabで差し込みます。"]
+            lines += ["", tr("NOTEBOOK INDEX / Type the first letters to reference", "NOTEBOOK INDEX / 先頭の文字から参照できます")]
+            lines += [kinds[item["kind"]] + "  " + safe_text(item["label"]) for item in links[:10]]
+        lines += ["", tr("Empty Enter: memo / search. Arrows + Tab: insert an Owner reference.", "空欄のEnterでメモ・検索へ。Agent入力の候補は矢印で選びTabで差し込みます。")]
         return "\n".join(lines)
-    lines = ["OWNER / あなたの指示・判断・理解・メモ", ""]
+    lines = [tr("OWNER / Your requests, decisions, insights and notes", "OWNER / あなたの指示・判断・理解・メモ"), ""]
     if query:
-        lines += ["LOCAL SEARCH / " + safe_text(query), f"{len(matched)} items / 外部送信なし", ""]
+        lines += ["LOCAL SEARCH / " + safe_text(query), f"{len(matched)} items / " + tr("local search only", "外部送信なし"), ""]
     receipt = view.get("receipt")
     if receipt and not query:
         outcome = view.get("outcome")
         if outcome:
             lines += ["RESULT / " + safe_text(outcome["message"]), ""]
-        lines += ["LAST ASSESSMENT / 最後に記録された評価",
+        lines += [tr("LAST ASSESSMENT / At the time of the recorded checks", "LAST ASSESSMENT / 最後に記録された評価"),
                   " / ".join(name.upper() + ": " + receipt[name]["status"] for name in ("build", "evidence", "ownership")),
-                  "検査は記録時点の範囲です。表示や選択は承認ではありません。", ""]
+                  tr("Checks have a recorded scope. Viewing or selecting is not approval.", "検査は記録時点の範囲です。表示や選択は承認ではありません。"), ""]
     for item in matched[:60]:
-        lines += [KINDS[item["kind"]] + "  " + safe_text(item["label"])]
+        lines += [kinds[item["kind"]] + "  " + safe_text(item["label"])]
         if item["text"].strip() != item["label"]:
-            preview = " ".join(_item_preview(item).split())
+            preview = " ".join(_item_preview(item, locale=locale).split())
             lines += ["  " + safe_text(preview[:180]) + (" ..." if len(preview) > 180 else "")]
         lines += [""]
     if not matched:
-        lines += ["一致する項目はありません。" if query else "まだ記録がありません。黄色の欄にメモを残すか、左下から仕事を依頼できます。", ""]
+        lines += [tr("No matching records.", "一致する項目はありません。") if query else tr("No records yet. Leave a memo in yellow, or ask for work at the lower left.", "まだ記録がありません。黄色の欄にメモを残すか、左下から仕事を依頼できます。"), ""]
     if len(matched) > 60:
-        lines += [f"{len(matched)}件中60件を表示。緑の検索欄で絞り込めます。", ""]
-    lines += ["Agent入力で項目名の先頭を2文字以上入力すると、参照の候補を選べます。",
-              "矢印で選びTabで差し込みます。選んでいないメモは自動送信しません。"]
+        lines += [tr(f"Showing 60 of {len(matched)}. Use the green search field to narrow down.", f"{len(matched)}件中60件を表示。緑の検索欄で絞り込めます。"), ""]
+    lines += [tr("Type the first two letters of an Owner item in Agent to find references.", "Agent入力で項目名の先頭を2文字以上入力すると、参照の候補を選べます。"),
+              tr("Arrows choose; Tab inserts. Unselected memos are not sent automatically.", "矢印で選びTabで差し込みます。選んでいないメモは自動送信しません。")]
     return "\n".join(lines)
 
 
@@ -269,8 +282,9 @@ def token_for(item):
 
 
 class OwnerCompleter(Completer):
-    def __init__(self, items, bindings):
+    def __init__(self, items, bindings, *, locale="ja"):
         self.items, self.bindings = items, bindings
+        self.locale = locale
 
     def get_completions(self, document, complete_event):
         tail = re.search(r"[^\s〈〉]{2,}$", document.text_before_cursor)
@@ -295,7 +309,8 @@ class OwnerCompleter(Completer):
                         break
             self.bindings[token] = deepcopy(item)
             yield Completion(token, start_position=-size, display=safe_text(item["label"]),
-                             display_meta=KINDS[item["kind"]] + " / 選択部分だけを参照")
+                             display_meta=(KINDS_EN[item["kind"]] + " / selected reference only" if self.locale == "en"
+                                           else KINDS[item["kind"]] + " / 選択部分だけを参照"))
 
 
 def selected_references(text, bindings):

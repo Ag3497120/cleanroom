@@ -154,6 +154,12 @@ def _section(root, configuration, section):
 
 
 def configure(root, configuration, section="menu"):
+    from .interaction_text import language
+    with language(configuration):
+        return _configure(root, configuration, section)
+
+
+def _configure(root, configuration, section="menu"):
     from . import development_console as ui
     if section != "menu":
         return _section(root, configuration, section)
@@ -245,6 +251,9 @@ def run(root, configuration, expected, locale, *, section="menu", show=False, as
         print("Initialized project-local settings: " + terminal_text(config.config_path(root)))
     try:
         configure(root, configuration, section)
+        if section == "menu":
+            from .onboarding_walkthrough import offer
+            offer(root, configuration)
     except (EOFError, KeyboardInterrupt):
         print("\nSettings closed. Earlier saved changes are retained.")
         return 130

@@ -344,7 +344,7 @@ from .work_tools import scoped as tool_scoped
 
 @tool_scoped
 def run_work(root, configuration, *, request, key=None, include=(), continue_from=None,
-             work_adapter=None, reflection_adapter=None, timeout=None, max_turns=12, assets=(), **unused):
+             work_adapter=None, reflection_adapter=None, timeout=None, max_turns=12, assets=(), attachments=(), **unused):
     # No request keywords, constitution.assess/prepare, learning catalogue,
     # intent-equivalence test, or reviewer-model gate is used in this path.
     root = Path(root).resolve()
@@ -361,6 +361,8 @@ def run_work(root, configuration, *, request, key=None, include=(), continue_fro
     from .agent_candidate_files import asset_manifest, materialize
     asset_paths = sorted({_relative(root, path) for path in assets})
     approved_assets = asset_manifest(root, asset_paths)
+    from .attachment_inputs import prepare as prepare_attachments
+    prepared_attachments = prepare_attachments(root, attachments)
     observed_scope = sorted(set(scope) | set(asset_paths))
     from .work_harness import select as select_harness
     harness = select_harness(root, configuration, explicit_adapter=work_adapter)
@@ -368,7 +370,13 @@ def run_work(root, configuration, *, request, key=None, include=(), continue_fro
     run_id = "work-" + digest({"project": configuration["project"]["id"], "key": key})[:24]
     intent = {"request": request, "scope": scope, "work_model": model,
               "previous": continue_from, "max_turns": max_turns, "timeout": timeout}
+    if prepared_attachments:
+        intent["attachments"] = [{"sha256": row["sha256"], "text_only": row["text_only"],
+                                  "pages": [page["number"] for page in row["pages"]]}
+                                 for row in prepared_attachments]
     if harness.external:
+        if prepared_attachments:
+            raise LedgerError("ATTACHMENT_INPUT", {"reason": "EXTERNAL_HARNESS_MEDIA_NOT_NEGOTIATED"})
         intent["work_harness"] = harness.descriptor
     if approved_assets:
         intent["assets"] = approved_assets
@@ -407,6 +415,7 @@ def run_work(root, configuration, *, request, key=None, include=(), continue_fro
             from .work_tools import current as current_tools
             context["tool_capabilities"] = current_tools().describe()
             context["approved_assets"] = approved_assets
+            context["attachments"] = prepared_attachments
             state = _record(root, configuration, run_id, "WorkSessionOpened",
                             {"read_scope": observed_scope, "work_model": model, "previous_run": continue_from,
                              "context": context, "max_turns": max_turns}, run_id + "-session")
@@ -435,7 +444,9 @@ def run_work(root, configuration, *, request, key=None, include=(), continue_fro
                 value = {"format": WORK_REQUEST, "request": request, "run_id": run_id,
                          "response_locale": configuration["ui"]["locale"],
                          "generation_id": run_id + "-model-" + str(index),
-                         "project_context": state["work_session"]["context"],
+                         "project_context": {key: value for key, value in state["work_session"]["context"].items()
+                                             if key != "attachments"},
+                         "attachments": state["work_session"]["context"].get("attachments", []),
                          "approved_files": scope, "turns": deepcopy(turns),
                          "approved_assets": state["work_session"]["context"].get("approved_assets", []),
                          "tool_receipts": deepcopy(state["work_tools"]),

@@ -1,0 +1,24 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "installCommand": "npm ci",
+  "buildCommand": "PAGES_BASE_PATH='' npm run build && PAGES_BASE_PATH='' ALLOW_UNCONFIGURED_COMPUTE=true node scripts/pages-config.mjs",
+  "outputDirectory": "dist/pages",
+  "trailingSlash": true,
+  "cleanUrls": true,
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        }
+      ]
+    }
+  ]
+}

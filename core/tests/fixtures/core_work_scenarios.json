@@ -1,0 +1,41 @@
+{
+  "format": "cleanroom.core-trials.v1",
+  "common": {
+    "scope": "One-scene prototype, small local project; not production completeness.",
+    "checks": [
+      "Artifact can be opened/built independently of the model answer.",
+      "Start, input, observable state change, finish/failure and restart work.",
+      "No invented execution evidence or human decision/mastery.",
+      "Reflection items cite actual work events and remain proposals.",
+      "Human selection, private memo and shareable decision survive replay.",
+      "Only shareable ownership records reach the next work request."
+    ],
+    "holdout_policy": "Freeze prompts before holdout runs. After a core change, earlier holdout results are no longer evidence for the new core. Do not add theme keywords to the kernel."
+  },
+  "cases": [
+    {
+      "id": "mouth",
+      "phase": "development",
+      "platform": "ios",
+      "request": "ARKitを使って、口を開けるとジャンプして障害物を避けるiPhoneゲームの最小試作を作ってください。開始・ゲームオーバー・再開、スコア表示を備え、顔追跡が使えない場合には手動入力でも遊べるようにしてください。カメラのデータは保存も外部送信もしません。追加の生成ツールを使わずXcodeでビルドできる小さなiOSプロジェクト一式と、操作方法・未確認事項をREADME.mdに残してください。配布や公開はしません。実行していない検査を合格扱いしないでください。"
+    },
+    {
+      "id": "bicycle",
+      "phase": "development",
+      "platform": "browser",
+      "request": "Three.jsで、舗装・砂利・ぬかるみの3種類の路面を走る自転車ゲームの最小試作を作ってください。1コースで路面によって速度や横滑りが変わり、その違いが画面から分かるようにしてください。キーボードと画面ボタン、開始・一時停止・ゲームオーバーまたはゴール・再開、スコアまたは距離表示が必要です。転倒してもリトライできます。単純な図形を使い、モデル素材は不要です。ローカルで開けるindex.htmlと必要な小さなファイル、README.mdを作ってください。テストや本番利用を実施したことにはせず、未確認事項を明記してください。ローカル試作だけで、公開・課金サービス・データ送信は行いません。"
+    },
+    {
+      "id": "signal",
+      "phase": "holdout",
+      "platform": "browser",
+      "request": "色の信号を順番通りに記憶して押す、ブラウザの小さなリズム記憶ゲームを作ってください。4個のパッドを点灯順に再現し、成功すると一段難しくなり、押し間違いで終了します。開始・一時停止・再開・リトライ、現在のレベルとスコアを表示してください。キーボードとタッチに対応し、音が出せなくても遊べるようにしてください。外部素材も通信も不要なindex.htmlとREADME.mdを作ってください。ローカル試作だけで公開せず、実行していない検査は未確認として残してください。"
+    },
+    {
+      "id": "irrigation",
+      "phase": "holdout",
+      "platform": "browser",
+      "request": "限られた水を3枚の畑へ配る、ブラウザの小さな灌漑管理ゲームを作ってください。畑ごとに乾燥速度が違い、毎ターン配水して枯らさずに8日間育てれば成功です。残水・各畑の水分・日数・スコアが見え、水不足ではゲームオーバーになります。開始・配水・一日進める・最初からやり直す操作が必要です。キーボードと画面ボタンで遊べるようにしてください。外部通信や素材が不要なindex.htmlとREADME.mdを作ってください。ローカル試作のみで公開しません。未実行の検査を合格扱いせず、未確認事項を明記してください。"
+    }
+  ]
+}

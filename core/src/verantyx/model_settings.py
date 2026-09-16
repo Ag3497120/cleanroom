@@ -137,7 +137,10 @@ def describe(configuration):
     }
 
 
-def ollama_models():
+def ollama_models(endpoint=None):
+    if endpoint is not None:
+        return _server_models(endpoint)
+
     """List locally installed Ollama names without sending project content."""
     executable = shutil.which("ollama")
     if not executable:
@@ -156,3 +159,58 @@ def ollama_models():
         if columns and columns[0] not in names:
             names.append(columns[0])
     return names[:32]
+
+
+def _server_models(endpoint):
+    """Metadata-only discovery on the selected server; never sends project data."""
+    import http.client
+    import ipaddress
+    import json
+    import ssl
+    from urllib.parse import urlsplit
+    url = urlsplit(endpoint)
+    _require(url.scheme in ("http", "https") and url.hostname and not url.username
+             and not url.password and not url.query and not url.fragment, "OLLAMA_ENDPOINT")
+    if url.scheme == "http":
+        try:
+            loopback = ipaddress.ip_address(url.hostname).is_loopback
+        except ValueError:
+            loopback = False
+        _require(loopback, "REMOTE_HTTP_USE_HTTPS_OR_SSH_TUNNEL")
+    if not url.path.rstrip("/").endswith(("/api/chat", "/api/generate")):
+        raise LedgerError("MODEL_SETTINGS", {"reason": "OLLAMA_API_ENDPOINT"})
+    prefix = url.path.rsplit("/api/", 1)[0]
+    connection = (http.client.HTTPSConnection(url.hostname, url.port, timeout=3,
+                                              context=ssl.create_default_context())
+                  if url.scheme == "https" else http.client.HTTPConnection(url.hostname, url.port, timeout=3))
+    try:
+        connection.request("GET", prefix + "/api/tags", headers={"Accept": "application/json"})
+        response = connection.getresponse()
+        if response.status != 200:
+            return []
+        raw = response.read(262145)
+        if len(raw) > 262144:
+            return []
+        document = json.loads(raw)
+        rows = document.get("models", []) if isinstance(document, dict) else []
+        if not isinstance(rows, list):
+            return []
+        return list(dict.fromkeys(row["name"] for row in rows
+                                  if isinstance(row, dict) and isinstance(row.get("name"), str)
+                                  and 0 < len(row["name"]) <= 160))[:64]
+    except (OSError, ValueError, http.client.HTTPException):
+        return []
+    finally:
+        connection.close()
+
+
+def current_label(root, configuration):
+    """Read configuration, not model prose, without initializing an adapter."""
+    from .interaction_text import tr
+    from .model_roles import load
+    roles = load(root)
+    if roles["parent"]:
+        row = roles["aliases"][roles["parent"]]["model"]
+        return "parent: " + row["provider"] + " / " + row["model"]
+    selection = configuration.get("runtime", {}).get("model_selection")
+    return selection["label"] if selection else tr("unconfigured", configuration["ui"]["locale"])

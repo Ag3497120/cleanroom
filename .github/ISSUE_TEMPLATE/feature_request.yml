@@ -1,0 +1,21 @@
+name: Feature or UX proposal
+description: Suggest a focused improvement to work, learning or personal records.
+title: "[Idea] "
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What are you trying to do?
+      description: Describe the user need before the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed experience
+      description: How would it stay optional, low-friction and clear about sources?
+  - type: textarea
+    id: tradeoffs
+    attributes:
+      label: Tradeoffs and alternatives
+      description: Consider privacy, explicit choices, existing controls and contributor maintenance.

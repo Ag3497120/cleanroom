@@ -9,15 +9,15 @@ The README, five operating guides, logo, programmed CLI recording, and landing p
 
 ## GitHub About
 
-> Build with AI without giving up authorship. A local-first Agent/Owner workspace that keeps your decisions, understanding, evidence, and experience.
+> Build with AI. Keep the experience. A local-first Agent/Owner workspace, optional learning notebook and personal skills journal that grow with your projects.
 
-Describe the human outcome first, the two-pane workspace second. Avoid “deterministic intelligence”, “fully sandboxed”, “human mastery certified”, or “all tests pass”.
+Describe the human outcome first: making things, retaining detailed experience, choosing what to learn or delegate, and carrying it into later projects. The two-pane workspace is the interface, not the whole product. Avoid “deterministic intelligence”, “fully sandboxed”, “human mastery certified”, or “all tests pass”.
 
-## Four distinct surfaces
+## One public home, distinct execution boundaries
 
 | Surface | Execution | Data |
 |---|---|---|
-| Pages interaction playground | Scripted UI by default; beta AI conversation is a separate explicit action | In-memory notes, cleared by reload; no project access |
+| Website home / Pages / Vercel interaction playground | Scripted UI by default; beta AI conversation is a separate explicit action | In-memory notes, cleared by reload; no project access |
 | Recorded CLI GIF / MP4 | Real CLI UI with fixture work | Public scripted data; no live-model success claims |
 | Local CLI / private Atlas | Configured work providers and local notebook | Personal/project stores; explicit sharing controls |
 | Existing optional hosted compute gateway | Separate owner-operated service | Its own GitHub authentication, approval, retention and usage limits |
@@ -34,13 +34,26 @@ Connecting a visitor's local model from an HTTPS page requires an explicitly pai
 
 A guest model on the author's separate Mac needs a hardened gateway, quotas, cancellation, a bounded capability set, explicit consent and operations monitoring. The existing gateway integration remains available, but no new public Mac endpoint, tunnel, secret, or subscription relay is enabled here. Gateway execution and the split CLI are not claimed to have identical capabilities.
 
-## Personal intent and licensing
+## Personal intent and MIT licensing
 
-The author's “sanctuary” explanation is a personal interpretation, not a claim that the Japanese term universally means that. The project has personal, non-commercial motivation. This statement does not introduce a non-commercial license or remove permissions in the repository's actual license.
+The author's “sanctuary” explanation is a personal interpretation, not a claim that the Japanese term universally means that. The project has personal, non-commercial motivation. Original project code and documentation are MIT licensed. This statement does not introduce a non-commercial restriction. Third-party posts, dependencies and assets retain their own rights, as described in NOTICE.
 
 ## Sources and interpretation
 
 The X post's URL, author and original posting date have not been provided. The supplied Japanese excerpt is attributed only as supplied material. Discussion summaries are not verbatim model transcripts or evidence that old quantitative claims are true. Device names, private workspace paths and tokens are excluded from the public origin notes.
+
+## Shared website and Vercel packaging
+
+The same CleanroomSite, language copy and playground components are used for the
+repository preview and verantyx.ai home. Both homes embed the interaction preview,
+then installation steps, the English CLI film and the voluntary notebook/skills story.
+Home, Vera, Apps and the existing dark/light control remain on verantyx.ai.
+The author profile remains only on that site.
+
+GitHub Pages uses its existing base-path build. Vercel uses vercel.json to export
+the same source at the domain root into dist/pages. The configured compute gateway
+remains a separate optional service; an unset gateway is not replaced by public
+access to the author's Mac or subscription.
 
 ## Maintenance
 

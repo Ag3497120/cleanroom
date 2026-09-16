@@ -86,7 +86,7 @@ def _argv(value, output_schema):
     return arguments
 
 
-def _exchange(arguments, prompt, value):
+def _exchange(arguments, prompt, value, *, stream=False):
     """Bound both pipes; stay in the outer adapter's process group on cancellation."""
     with tempfile.TemporaryDirectory(prefix="cleanroom-claude-") as directory:
         process = subprocess.Popen(
@@ -131,6 +131,9 @@ def _exchange(arguments, prompt, value):
             except subprocess.TimeoutExpired:
                 raise LedgerError("BRIDGE_TIMEOUT", {"reason": "CLAUDE_TIMEOUT"}) from None
             require(returncode == 0, "CLAUDE_PROCESS_EXIT", "BRIDGE_PROCESS_FAILED")
+            if stream:
+                results = [decode(line, value["max_response_bytes"]) for line in output.splitlines() if line.strip()]
+                return next((row for row in reversed(results) if isinstance(row, dict) and row.get("type") == "result"), {})
             return decode(output, value["max_response_bytes"])
         finally:
             if process.poll() is None:
@@ -148,9 +151,21 @@ def request(value, document):
     require(len(canonical(document).encode()) <= MAX_INPUT, "CLAUDE_INPUT_LIMIT", "DOCUMENT_LIMIT")
     login = status("claude", value["executable"])
     require(login["subscription_login"], "CLAUDE_SUBSCRIPTION_SIGN_IN_REQUIRED", "BRIDGE_START_FAILED")
-    wire, output_schema = native_contract(document)
-    result = _exchange(_argv(value, output_schema),
-                       ("REQUEST_JSON\n" + canonical(wire)).encode(), value)
+    from verantyx.attachment_inputs import image_inputs, public_request
+    images = image_inputs(document)
+    wire, output_schema = native_contract(public_request(document))
+    arguments = _argv(value, output_schema)
+    prompt = "REQUEST_JSON\n" + canonical(wire)
+    if images:
+        arguments[arguments.index("--input-format") + 1] = "stream-json"
+        arguments[arguments.index("--output-format") + 1] = "stream-json"
+        arguments.append("--verbose")
+        content = [{"type": "text", "text": prompt}] + [
+            {"type": "image", "source": {"type": "base64", "media_type": item["mime_type"], "data": item["data"]}}
+            for item in images]
+        prompt = canonical({"type": "user", "message": {"role": "user", "content": content},
+                            "parent_tool_use_id": None}) + "\n"
+    result = _exchange(arguments, prompt.encode(), value, stream=bool(images))
     require(type(result) is dict and result.get("type") == "result"
             and result.get("subtype") == "success" and result.get("is_error") is not True,
             "CLAUDE_RESULT_FAILED", "BRIDGE_OUTCOME_UNKNOWN")
