@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 type Section = 'overview' | 'models' | 'workspace' | 'boundary' | 'notebook';
 
@@ -24,10 +24,11 @@ const providers = [
 export default function SettingsPanel({ onClose }: { onClose: () => void }) {
   const [section, setSection] = useState<Section>('overview');
   const [provider, setProvider] = useState('codex');
+  const drawer = useRef<HTMLDialogElement>(null);
+  useEffect(() => { drawer.current?.showModal(); }, []);
   const selected = providers.find((item) => item.id === provider) ?? providers[0];
 
-  return <div className="settings-backdrop" role="presentation" onMouseDown={onClose}>
-    <section className="settings-drawer" aria-label="Cleanroom Settings" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
+  return <dialog ref={drawer} className="settings-drawer" aria-label="Cleanroom Settings" onCancel={(event) => { event.preventDefault(); onClose(); }}>
       <aside className="settings-sidebar">
         <div className="settings-mark" aria-hidden="true"><span className="seal-orbit" /><span>V</span></div>
         <div className="settings-brand">
@@ -88,6 +89,5 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
           <p className="quiet-note">Learning is not a gate. A task can be built while understanding remains visible as a future note.</p>
         </div>}
       </main>
-    </section>
-  </div>;
+  </dialog>;
 }

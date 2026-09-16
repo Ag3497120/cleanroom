@@ -25,7 +25,8 @@ def source_units(request):
     groups = []
     for source in request["shared_context"]["sources"]:
         parts = []
-        for quote in re.split(r"(?<=[。！？!?；;\n])", source["text"]):
+        # Citation boundaries retain punctuation; they do not classify intent.
+        for quote in re.split(r"(?<=[。！？!?、，；;\n])", source["text"]):
             if quote.strip():
                 parts.append(quote)
             elif quote and parts:

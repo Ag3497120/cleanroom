@@ -10,8 +10,8 @@ void test('terminal sample renders Japanese input, completion, real recorded lim
   const term = new headless.Terminal({cols:100,rows:32,allowProposedApi:true});
   const sample = hostedSample(term as unknown as BrowserTerminal, () => {});
   for (let i=0;i<5;i++) await flush(term);
-  assert.ok(lines(term).includes('VERANTYX'));
-  assert.ok(lines(term).includes('AI未接続'));
+  assert.ok(lines(term).includes('CLEANROOM NOTEBOOK'));
+  assert.ok(lines(term).includes('AI disconnected'));
   sample.input('日本語\n次の行');
   for (let i=0;i<5;i++) await flush(term);
   assert.ok(lines(term).includes('日本語'));

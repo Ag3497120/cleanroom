@@ -13,6 +13,14 @@ if(!existsSync(entry))throw new Error('Build with the same PAGES_BASE_PATH befor
 // uploaded artifact at /repo/, so remove that extra filesystem nesting.
 rmSync('dist/pages',{recursive:true,force:true});mkdirSync('dist/pages',{recursive:true});
 cpSync(source,'dist/pages',{recursive:true});cpSync(entry,'dist/pages/index.html');
+// Keep slash-based navigation working with Vinext's flat HTML export.
+for(const route of ['author','terminal']){
+  const page=resolve('dist/pages',route+'.html');
+  if(existsSync(page)){
+    const directory=resolve('dist/pages',route);
+    mkdirSync(directory,{recursive:true});cpSync(page,resolve(directory,'index.html'));
+  }
+}
 if(existsSync('dist/client/404.html'))cpSync('dist/client/404.html','dist/pages/404.html');
 writeFileSync('dist/pages/compute-config.json', JSON.stringify({public_mode:true,gateway_url:parsed?.origin??''})+'\n');
 writeFileSync('dist/pages/.nojekyll','');
