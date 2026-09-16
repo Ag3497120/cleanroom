@@ -25,9 +25,9 @@ EMPTY = {"project_revision": 0, "events": [], "states": [], "rules": {}, "as_of"
 
 
 def layout_mode(columns, rows):
-    if columns >= 140 and rows >= 24:
+    if columns >= 120 and rows >= 28:
         return "side"
-    if columns >= 90 and rows >= 36:
+    if columns >= 80 and rows >= 48:
         return "stack"
     return "tabs"
 
@@ -323,7 +323,7 @@ class Reader:
         self.previous_key = None
         self.view = None
 
-    def read(self, selected=None, follow=False):
+    def read(self, selected=None, follow=False, room_id=None, empty=False, note_offset=0, note_query=""):
         cursor = read_cursor(self.root) if follow else None
         if cursor and cursor.get("run_id") and selected is None:
             selected = cursor["run_id"]
@@ -334,14 +334,32 @@ class Reader:
         changed = snapshot is not None
         if not changed:
             snapshot = self.previous
-        from .cleanroom_owner import read_notes
-        owner_notes = read_notes(self.root)
-        key = (selected, digest(self.configuration), digest(owner_notes))
+        from .cleanroom_owner import read_notes, read_legacy_notes
+        from .session_store import import_legacy
+        if not follow and not getattr(self, "_legacy_import_checked", False):
+            from .session_store import legacy_imported
+            if not legacy_imported(self.root):
+                import_legacy(self.root, read_legacy_notes(self.root),
+                              [row["run_id"] for row in snapshot["states"] if row.get("work_session")])
+            self._legacy_import_checked = True
+        from .session_store import memo_page
+        note_page = memo_page(self.root, room_id, offset=note_offset, query=note_query)
+        owner_notes = note_page["rows"]
+        if follow and not owner_notes and note_page["total"] == 0:
+            legacy = read_legacy_notes(self.root)
+            if note_query:
+                legacy = [row for row in legacy if note_query.casefold() in row["body"].casefold()]
+            note_page["total"] = len(legacy)
+            owner_notes = list(reversed(list(reversed(legacy))[note_offset:note_offset + 200]))
+        if empty:
+            selected = "__empty_agent_session__"
+        key = (selected, digest(self.configuration), digest(owner_notes), note_offset, note_query)
         if changed or key != self.previous_key:
             self.view = project_view(snapshot, self.configuration, selected, owner_notes)
             self.previous, self.previous_key = snapshot, key
-        return {**self.view, "cursor": cursor,
-                "read_at": datetime.now(timezone.utc).isoformat()}
+        return {**self.view, **({"run_id": None} if empty else {}), "cursor": cursor,
+                "read_at": datetime.now(timezone.utc).isoformat(),
+                "memo_page": {key: value for key, value in note_page.items() if key != "rows"}}
 
     def close(self):
         self.snapshot_token = None

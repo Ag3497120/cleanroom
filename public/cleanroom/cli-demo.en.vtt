@@ -1,22 +1,33 @@
 WEBVTT
 
-00:00.000 --> 00:02.800
-Ask normally. Agent works on the left; your notebook stays on the right.
+1
+00:00:00.000 --> 00:00:04.000
+01  Ask normally. Your request has a background. The answer stays separate from system activity.
 
-00:02.800 --> 00:07.000
-An optional explanation arrives in Owner while work proceeds. No mastery is inferred.
+2
+00:00:04.000 --> 00:00:08.000
+02  Understanding does not wait for the finish. A small optional note arrives during work, with a stable L-number.
 
-00:07.000 --> 00:11.300
-Empty Enter opens your yellow memo. Saving it does not send it to AI.
+3
+00:00:08.000 --> 00:00:12.000
+03  Ask about one insight without replacing the work. Send L-000001. This recorded explanation is scripted; no model is called.
 
-00:11.300 --> 00:15.000
-Empty Enter switches to green local search.
+4
+00:00:12.000 --> 00:00:17.000
+04  Keep a private memo. Empty Enter moves to the yellow Owner field. Your note is not sent to AI.
 
-00:15.000 --> 00:19.000
-Type a prefix, choose with arrows, insert an exact reference with Tab.
+5
+00:00:17.000 --> 00:00:21.000
+05  Review a candidate, without losing your place. A choice appears in Agent. Owner keeps focus until you switch back.
 
-00:19.000 --> 00:23.000
-Page keys scroll only the active pane.
+6
+00:00:21.000 --> 00:00:26.000
+06  Find and reuse only what matters. Green searches Owner. A title prefix and Tab insert a chosen reference.
 
-00:23.000 --> 00:28.000
-F2 opens actions, including your profile, journal, skills and next-time choices.
+7
+00:00:26.000 --> 00:00:30.000
+07  A conversation, not a screen that resets. The next question joins the same conversation. Your notebook stays beside it.
+
+8
+00:00:30.000 --> 00:00:34.000
+08  Your pace. Your own notebook. Scroll the active side while the other keeps its place. No homework list.

@@ -7,6 +7,7 @@ from . import personal_profile as profile
 from .agent_console import terminal_text
 from .cleanroom_io import console_print as print
 from .errors import LedgerError
+from .console_copy import ui_text
 
 LABELS = {
     "experience": "Experience / 使った経験", "understanding": "Understanding / 自分の説明",
@@ -37,53 +38,53 @@ def first_open(root=None, configuration=None):
         if profile.preferences()["onboarded"]:
             return
         from . import development_console as ui
-        line("\nMY NOTEBOOK / あなたの経験も、一緒に育てる")
-        line("試験ではありません。AIに任せることや未記入で、使える機能が減ることはありません。")
-        line("自己申告は人それぞれで構いません。いつでも自分の言葉で変更できます。")
-        line("保存はこのMacの本人用領域。すべてのプロジェクトで共通です。")
+        line("\nMY NOTEBOOK / " + ui_text("Your experience can grow alongside your projects."))
+        line(ui_text("This is not an exam. Delegating or leaving this blank never removes features."))
+        line(ui_text("Describe your experience in your own words; you can change it at any time."))
+        line(ui_text("Stored in your personal area on this computer, shared across your projects."))
         choices = ["light", "private", "guided", "skip"]
         mode = ui._pick("How would you like to start?", choices, lambda value: {
-            "light": "Light / 1日1つまで。共有を選んだ経験・学びをAIと引き継ぐ",
-            "private": "Private / 日記と経験はローカルだけ。学習提案は自分から開く",
-            "guided": "Together / 小さな実例を見ながら進める。1日1つまで",
-            "skip": "Skip / 今は仕事へ。F2 > My profile からいつでも始める",
+            "light": "Light / one suggestion per day; only your chosen excerpts are shared",
+            "private": "Private / local journal; open learning suggestions yourself",
+            "guided": "Together / small examples, at most once per day",
+            "skip": "Skip / start working; open My profile later",
         }[value])
         if mode in (None, "skip"):
             profile.configure({"onboarded": True})
             return
         shared = mode != "private"
         if shared:
-            line("本人が共有した経験と短い学習記録を、作業AI・整理AIへ送ります。")
-            line("整理を有効にすると作業後に追加のAI呼び出しがあります。機密の相談は自分用にできます。")
+            line(ui_text("Shared experience and short learning records are sent only to your selected Work and Reflection AI."))
+            line(ui_text("Organization may add model calls after work. Sensitive notes can stay private."))
             if ui._pick("Enable this personal context?", [False, True],
-                        lambda v: "Enable / この範囲で始める" if v else "Private / 送信せず始める") is not True:
+                        lambda v: "Enable / share only this scope" if v else "Private / start without sharing") is not True:
                 shared = False
         profile.configure({"onboarded": True, "enabled": True, "share_with_ai": shared,
                            "mode": ("guided" if mode == "guided" else "light") if shared else "on_demand",
                            "weight": "snippet" if mode == "guided" else "brief",
                            "daily_limit": 1, "per_work": 1})
-        line("最初から全部書く必要はありません。AIと一緒に使った経験も、そのままで大丈夫です。")
+        line(ui_text("You do not need to fill everything in. Experience gained with AI is welcome too."))
         record_technology()
     except Exception as error:
-        line("本人用ノートの準備は後に回せます。作業は続けられます。 " + getattr(error, "code", type(error).__name__))
+        line(ui_text("Your notebook can be set up later. Work can continue: {reason}", reason=getattr(error, "code", type(error).__name__)))
 
 
 def record_technology(technology=None, reason=""):
     from . import development_console as ui
     if technology is None:
-        technology = ui._ask("One technology you have used / 思いつく技術を1つ（空欄で後にする）")
+        technology = ui._ask("One technology you have used (Enter to skip)")
     if not technology:
         return
-    line("\n" + technology + " / 経験はまだ記録されていません。未経験という意味ではありません。")
+    line("\n" + technology + " / " + ui_text("No experience statement is recorded yet. This does not mean you lack experience."))
     if reason:
-        line("今回とのつながり: " + reason)
-    line("例: AIと小さなアプリを作った、読めるが設計は相談したい、普段使っている。")
-    line("正確な段階分けは不要です。空欄でも仕事はそのまま進みます。")
-    text = ui._ask("Your experience / 今の感覚を一言")
+        line(ui_text("Connection to this work: {reason}", reason=reason))
+    line(ui_text("For example: built a small app with AI; can read it but want design help; use it regularly."))
+    line(ui_text("No precise level is required. Leaving this blank does not stop work."))
+    text = ui._ask("Your experience, in your own words")
     if not text:
         return
     shared = profile.preferences()["share_with_ai"]
-    line("この記録は" + ("次のAIにも文脈として渡します。" if shared else "自分用に保存し、AIには送りません。"))
+    line(ui_text("This statement will be shared as context with your selected AI." if shared else "This statement stays private and is not sent to AI."))
     return profile.statement(text, technology=technology, share=shared)
 
 

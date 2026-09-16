@@ -52,10 +52,10 @@ def _legacy_show_result(root, result):
 def _connection(root, configuration, role):
     from . import development_console as ui
     from .model_settings import ollama_models
-    provider = ui._pick("Choose a connection", ["codex", "claude", "ollama", "openai", "anthropic", "gemini", "openai_compatible"],
+    provider = ui._pick("Choose a connection", ["codex", "claude", "ollama", "lmstudio", "openai", "anthropic", "gemini", "openai_compatible"],
                         lambda name: {"codex": "ChatGPT subscription / Codex",
                                       "claude": "Claude subscription / Claude Code",
-                                      "ollama": "Ollama / local",
+                                      "ollama": "Ollama / local", "lmstudio": "LM Studio / local",
                                       "openai": "OpenAI API", "anthropic": "Anthropic API",
                                       "gemini": "Gemini API", "openai_compatible": "OpenAI-compatible server"}[name])
     if provider is None:
@@ -63,11 +63,13 @@ def _connection(root, configuration, role):
     if provider in ("codex", "claude"):
         from .subscription_setup import configure as connect_subscription
         return connect_subscription(root, configuration, provider, role=role)
-    preset = ui._MODEL_PRESETS[provider]
+    preset = ({"endpoint": "http://127.0.0.1:1234/v1/responses", "provider": "openai_compatible", "key_env": None, "loopback": True}
+              if provider == "lmstudio" else ui._MODEL_PRESETS[provider])
     endpoint = preset["endpoint"]
-    if provider in ("ollama", "openai_compatible"):
+    if provider in ("ollama", "lmstudio", "openai_compatible"):
         endpoint = ui._ask("Server endpoint (HTTPS or HTTP loopback / SSH tunnel)", endpoint)
-    available = ollama_models(endpoint) if provider == "ollama" else []
+    from .model_preferences import local_models
+    available = local_models(endpoint, lmstudio=provider == "lmstudio") if provider in ("ollama", "lmstudio") else []
     model = ui._pick("Installed local models", available, str) if available else None
     if model is None:
         model = ui._ask("Model name (blank to cancel)")
@@ -98,8 +100,9 @@ def _configure(root, configuration):
         reflection = reflection_setting(configuration)
         print("\nWork AI: " + terminal_text(describe(configuration)["label"]))
         print("Reflection AI: " + terminal_text(reflection["label"]))
-        action = ui._pick("Models & organization", ["work", "roles", "same", "custom", "off", "organize"],
-                          lambda value: {"work": "Choose Work AI", "roles": "Parent / child model roles",
+        action = ui._pick("Models & organization", ["work", "tune", "context", "roles", "same", "custom", "off", "organize"],
+                          lambda value: {"work": "Choose Work AI", "tune": "Tune current model / effort and context",
+                                         "context": "Context & compaction", "roles": "Parent / child model roles",
                                          "same": "Reflection: same as Work AI (default)",
                                          "custom": "Reflection: choose a different AI",
                                          "off": "Reflection: off; keep work facts only",
@@ -107,7 +110,13 @@ def _configure(root, configuration):
         if action is None:
             return
         try:
-            if action == "roles":
+            if action == "tune":
+                from .model_preferences import tune
+                tune(root, configuration)
+            elif action == "context":
+                from .model_preferences import context_menu
+                context_menu(root, configuration)
+            elif action == "roles":
                 from .model_roles import menu as roles_menu
                 roles_menu(root, configuration)
             elif action in ("work", "custom"):

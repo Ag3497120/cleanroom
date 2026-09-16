@@ -115,3 +115,10 @@ def choose(title, choices, descriptions, lang=None):
                        full_screen=False, style=Style.from_dict({
                            "selected": "bold fg:#98c8ba", "detail": "fg:#a8bec5",
                        })).run()
+
+
+from .session_text import TEXT as SESSION_DETAILS
+DETAILS.update({name: SESSION_DETAILS[key] for name, key in {
+    "tune": "tune_detail", "context": "auto_detail", "permissions": "permanent_detail",
+    "lmstudio": "local_detail",
+}.items()})

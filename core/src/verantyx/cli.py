@@ -26,6 +26,7 @@ def parse(argv):
     common.add_argument("--json", action="store_true")
     common.add_argument("--plain", action="store_true")
     common.add_argument("--tutorial", action="store_true")
+    common.add_argument("--trust-workspace", action="store_true")
     common.add_argument("--version", action="store_true")
     common.add_argument("-h", "--help", action="store_true")
     options, rest = common.parse_known_args(argv)
@@ -34,6 +35,15 @@ def parse(argv):
     sub.add_parser("desktop-bridge", add_help=False, allow_abbrev=False)
     for command in ("tutorial", "status", "config", "doctor"):
         sub.add_parser(command, add_help=False, allow_abbrev=False)
+    fresh = sub.add_parser("new", add_help=False, allow_abbrev=False)
+    fresh.add_argument("name", nargs="?")
+    fresh.add_argument("--owner", action="store_true")
+    fresh.add_argument("--yes", action="store_true")
+    rooms = sub.add_parser("cleanroom", add_help=False, allow_abbrev=False)
+    rooms.add_argument("name", nargs="?")
+    rooms.add_argument("--yes", action="store_true")
+    compact = sub.add_parser("compact", add_help=False, allow_abbrev=False)
+    compact.add_argument("--yes", action="store_true")
     watcher = sub.add_parser("watch", add_help=False, allow_abbrev=False)
     watcher.add_argument("run_id", nargs="?")
     watcher.add_argument("--run", dest="watch_run")
@@ -55,7 +65,7 @@ def parse(argv):
     starter.add_argument("--include", action="append", default=[])
     starter.add_argument("--plain", action="store_true")
     setup = sub.add_parser("setup", add_help=False, allow_abbrev=False)
-    sections = ("project", "models", "accounts", "codex", "claude", "learning", "language", "workspace", "boundary", "profile", "pace", "skills", "harness", "sandbox", "notebook", "roles")
+    sections = ("project", "models", "accounts", "codex", "claude", "learning", "language", "workspace", "boundary", "profile", "pace", "skills", "harness", "sandbox", "notebook", "roles", "context", "permissions")
     setup.add_argument("section", nargs="?", choices=sections)
     setup.add_argument("--show", action="store_true")
     setup.add_argument("--non-interactive", action="store_true")
@@ -528,9 +538,24 @@ def main(argv=None):
                 from .agent_console import terminal_text
                 print(terminal_text(json.dumps(result, ensure_ascii=False, indent=2)))
             return 0
+        if args.command in (None, "new", "cleanroom", "compact", "setup", "settings", "models", "model", "develop", "tutorial"):
+            from .session_commands import authorize_workspace
+            interactive_entry = sys.stdin.isatty() and sys.stdout.isatty() and not as_json
+            if interactive_entry or options.trust_workspace:
+                if not authorize_workspace(root, locale, explicit=options.trust_workspace):
+                    return 0
         existing, expected = config.load(root)
         if existing is not None and not options.lang:
             locale = existing["ui"]["locale"]
+        if args.command in ("new", "cleanroom", "compact"):
+            if existing is None:
+                config.save(root, config.defaults(root, locale), expected)
+                existing, expected = config.load(root)
+            if options.lang:
+                existing = copy.deepcopy(existing)
+                existing["ui"]["locale"] = locale
+            from .session_commands import run as run_session_command
+            return run_session_command(root, existing, args, as_json=as_json, plain=options.plain)
         if args.command in ("setup", "settings", "models", "model"):
             section = getattr(args, "section", None)
             project_options = args.command == "setup" and (
@@ -562,7 +587,13 @@ def main(argv=None):
         if args.command == "tutorial":
             if sys.stdin.isatty() and sys.stdout.isatty() and not as_json:
                 from .onboarding_walkthrough import offer
-                offer(root, existing or config.defaults(root, locale), force=True)
+                start_real = offer(root, existing or config.defaults(root, locale), force=True)
+                if start_real:
+                    if existing is None:
+                        config.save(root, config.defaults(root, locale), expected)
+                        existing, _ = config.load(root)
+                    from .cleanroom_tui import interact
+                    interact(root, existing)
             else:
                 from .interaction_text import help_text as interaction_help
                 if as_json:

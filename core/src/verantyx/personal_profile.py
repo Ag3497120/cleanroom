@@ -18,7 +18,7 @@ SESSION_ID = uuid.uuid4().hex
 KINDS = ("experience", "understanding", "confidence", "support", "goal", "delegation", "memo")
 DEFAULTS = {
     "onboarded": False, "enabled": False, "share_with_ai": False,
-    "mode": "on_demand", "weight": "brief", "timing": "after_work",
+    "mode": "on_demand", "weight": "brief", "timing": "at_breaks",
     "daily_limit": 1, "per_work": 1, "stack_questions": True,
 }
 ENUMS = {"mode": ("on_demand", "light", "guided"), "weight": ("brief", "snippet", "practice"),

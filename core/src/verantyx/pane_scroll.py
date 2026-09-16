@@ -13,7 +13,7 @@ from prompt_toolkit.mouse_events import MouseEventType
 
 def install_pane_scroll(session, bindings):
     def available():
-        return (session.picker is None
+        return ((session.picker is None or session.picker.get("inline", False))
                 and session.input.buffer.complete_state is None)
 
     def target():
@@ -25,6 +25,8 @@ def install_pane_scroll(session, bindings):
         area = target()
         window = area.window
         if window.render_info is None:
+            return
+        if area is session.areas.get("owner") and session._archive_scroll(direction, window):
             return
         if page:
             # Use prompt_toolkit's wrapped-line-aware paging, temporarily focusing

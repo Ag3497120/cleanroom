@@ -29,7 +29,7 @@ MAX_INPUT = 512 * 1024
 FIELDS = {"format", "provider", "model", "reasoning_effort", "role", "executable",
           "budget_directory", "max_calls", "timeout", "max_input_bytes", "max_response_bytes"}
 REQUEST_FORMATS = tuple("verantyx." + name + "-request.v1" for name in
-                        ("proposal", "learning", "response", "handoff-plan", "editor", "asset-workflow", "work-agent", "reflection", "reflection-skills", "personal-growth"))
+                        ("proposal", "learning", "response", "handoff-plan", "editor", "asset-workflow", "work-agent", "reflection", "reflection-skills", "personal-growth", "session-summary"))
 ENVELOPE = {"type": "object", "properties": {"document": {"type": "string"}},
             "required": ["document"], "additionalProperties": False}
 INSTRUCTIONS = (
@@ -53,9 +53,11 @@ def _require(condition, reason, code="BRIDGE_CONFIG"):
 
 
 def validate_config(value):
-    _require(type(value) is dict and set(value) == FIELDS, "CODEX_CONFIG")
+    _require(type(value) is dict and FIELDS <= set(value) <= FIELDS | {"context_window"}, "CODEX_CONFIG")
     _require(value["format"] == FORMAT and value["provider"] == PROVIDER
-             and value["reasoning_effort"] == "low" and value["role"] in ROLES, "CODEX_MODEL_AND_ROLE")
+             and value["reasoning_effort"] in ("auto", "none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra") and value["role"] in ROLES, "CODEX_MODEL_AND_ROLE")
+    if "context_window" in value:
+        _require(type(value["context_window"]) is int and 4096 <= value["context_window"] <= 2000000, "CODEX_LIMIT")
     from verantyx.subscription_cli import validate_model
     validate_model(value["model"])
     for key in ("executable", "budget_directory"):
@@ -73,7 +75,7 @@ def configuration(directory, role, max_calls=4, model=MODEL, executable=None):
     from verantyx.subscription_cli import find_executable
     executable = executable or find_executable("codex")
     _require(executable is not None, "CODEX_NOT_INSTALLED")
-    return validate_config({"format": FORMAT, "provider": PROVIDER, "model": model, "reasoning_effort": "low",
+    return validate_config({"format": FORMAT, "provider": PROVIDER, "model": model, "reasoning_effort": "auto",
                             "role": role, "executable": executable,
                             "budget_directory": str(Path(directory).resolve() / "budget"),
                             "max_calls": max_calls, "timeout": 300, "max_input_bytes": MAX_INPUT,
@@ -102,8 +104,12 @@ def command_for(path, value):
 def _argv(config, schema_path):
     # Built-in provider IDs are reserved; do not redefine openai to change retries.
     # Our budget bounds CLI invocations, not the provider's internal transport retries.
-    overrides = ('forced_login_method="chatgpt"', 'model_provider="openai"', 'model_reasoning_effort="low"',
+    overrides = ('forced_login_method="chatgpt"', 'model_provider="openai"',
                  "features.shell_tool=false", "features.multi_agent=false", 'web_search="disabled"')
+    if config["reasoning_effort"] != "auto":
+        overrides += ('model_reasoning_effort="' + config["reasoning_effort"] + '"',)
+    if config.get("context_window"):
+        overrides += ("model_context_window=" + str(config["context_window"]),)
     return [config["executable"], "exec", "--ignore-user-config",
             *[part for setting in overrides for part in ("-c", setting)],
             "--json", "--ephemeral", "--skip-git-repo-check",

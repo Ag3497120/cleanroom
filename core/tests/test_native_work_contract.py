@@ -5,7 +5,7 @@ from io import StringIO
 from unittest import TestCase
 from jsonschema import Draft202012Validator
 
-from verantyx.agent_schema import WORK_REQUEST, REFLECTION_REQUEST, schema, native_contract, validate_output
+from verantyx.agent_schema import WORK_REQUEST, REFLECTION_REQUEST, schema, generation_schema, native_contract, validate_output
 from verantyx.errors import LedgerError
 from verantyx.owner_notebook import show_receipt
 
@@ -23,7 +23,7 @@ class NativeContract(TestCase):
         for kind in (WORK_REQUEST, REFLECTION_REQUEST):
             request, envelope = native_contract({"format": kind})
             walk(envelope)
-            self.assertEqual(request["output_schema"], schema({"format": kind}))
+            self.assertEqual(request["output_schema"], generation_schema({"format": kind}))
 
     def test_transport_is_independent_of_task_theme(self):
         for kind in (WORK_REQUEST, REFLECTION_REQUEST):

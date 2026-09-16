@@ -64,7 +64,9 @@ class BootstrapTests(unittest.TestCase):
                 self.assertEqual(direct.stdout, alias.stdout)
                 result = json.loads(direct.stdout)
                 self.assertEqual(result["locale"], locale)
-                self.assertEqual(len(result["steps"]), 4)
+                self.assertTrue(result["simulated"])
+                self.assertIn("/", result["text"])
+                self.assertEqual(result["model_calls"], 0)
                 self.assertFalse(result["writes"])
         self.assertFalse((self.project / ".verantyx").exists())
 
@@ -182,20 +184,21 @@ class BootstrapTests(unittest.TestCase):
         self.assertEqual(json.loads(result.stdout)["error"]["code"], "CONFIG_SYMLINK")
         self.assertEqual(list(other.iterdir()), [])
 
-    def test_first_interactive_launch_saves_only_after_review(self):
+    def test_first_interactive_launch_uses_safe_defaults_after_consent(self):
         for locale in LANGUAGES:
             project = self.project / locale
             project.mkdir()
-            answers = Terminal("My project\nMy purpose\n1\n2\n1\n")
-            output = Terminal()
-            with patch("sys.stdin", answers), contextlib.redirect_stdout(output):
+            with patch("sys.stdin", Terminal()), contextlib.redirect_stdout(Terminal()), \
+                    patch("verantyx.session_commands.authorize_workspace", return_value=True) as consent, \
+                    patch("verantyx.terminal_ui.capable_terminal", return_value=False), \
+                    patch("verantyx.development_console.interact", return_value={"ok": True}) as interact:
                 code = main(["--project", str(project), "--lang", locale])
             self.assertEqual(code, 0)
+            consent.assert_called_once()
             value, _ = config.load(project)
-            self.assertEqual(value["project"]["name"], "My project")
-            self.assertEqual(value["learning"]["max_items"], 2)
+            self.assertEqual(value["project"]["name"], project.name)
             self.assertEqual(value["ui"]["locale"], locale)
-            self.assertIn(catalog(locale)["review"], output.getvalue())
+            self.assertTrue(interact.call_args.kwargs["onboarding"])
 
     def test_cancellation_and_eof_leave_no_incomplete_settings(self):
         for answers in (":q\n", "name\npurpose\n1\n1\n2\n", "name\n"):

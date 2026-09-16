@@ -20,7 +20,9 @@ def normalize(value: str) -> str:
 
 
 def environment_locale() -> str:
-    for key in ("VERANTYX_LANG", "LC_ALL", "LC_MESSAGES", "LANG"):
+    # English on a fresh install. OS language must not silently choose onboarding.
+    # A saved choice, --lang, or the explicit VERANTYX_LANG override still wins.
+    for key in ("VERANTYX_LANG",):
         if os.environ.get(key):
             try:
                 return normalize(os.environ[key])

@@ -8,6 +8,10 @@ class EnterRoutingContract(TestCase):
     def subject(self):
         instance = mock.Mock()
         instance.readonly = False
+        instance.practice = False
+        instance._live_command.return_value = False
+        instance._session_control.return_value = False
+        instance._handle_control.return_value = False
         instance.busy = True
         instance.question = object()
         return instance

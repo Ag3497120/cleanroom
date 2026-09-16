@@ -13,6 +13,7 @@ EVENT_ACTORS = {
     "WorkToolRecorded": "work_gateway",
     "WorkResultRecorded": "work_gateway",
     "WorkOwnerReplyRecorded": "local_cli",
+    "WorkInstructionRecorded": "local_cli",
     "ReflectionRecorded": "reflection_gateway",
 }
 HASH = {"type": "string", "pattern": "^[a-f0-9]{64}$"}
@@ -23,6 +24,15 @@ MODEL = obj({"provider": {"type": "string", "maxLength": 160},
 ARTIFACT = obj({"path": STRING, "storage_path": STRING, "sha256": HASH,
                 "size": {"type": "integer", "minimum": 0}})
 TOOL = obj({"id": STRING, "tool": STRING, "path": STRING, "text": STRING})
+CHANGE_REVIEW = obj({
+    "review_id": HASH, "path": STRING, "request_id": STRING,
+    "before_sha256": {"anyOf": [HASH, {"type": "null"}]},
+    "after_sha256": HASH, "diff_sha256": HASH,
+    "baseline": {"enum": ["CANDIDATE", "APPROVED_SOURCE", "NOT_READ"]},
+    "scope": {"const": "ISOLATED_CANDIDATE_ONLY"},
+    "mode": {"enum": ["ALLOW_ONCE", "BYPASS_GRANTED", "BYPASS_RUN", "WORKSPACE", "PERMANENT", "DENIED", "PREAUTHORIZED"]},
+    "grant_id": {"type": "string", "maxLength": 64},
+})
 RESULT = obj({
     "status": {"enum": ["SUCCEEDED", "PARTIAL", "WAITING_OWNER", "FAILED"]},
     "answer": STRING, "question": STRING, "reason": STRING,
@@ -88,8 +98,16 @@ def validate_payload(kind, payload):
         }),
         "WorkResultRecorded": RESULT,
         "WorkOwnerReplyRecorded": obj({"question_source_ref": STRING, "text": STRING}),
+        "WorkInstructionRecorded": obj({
+            "id": {"type": "string", "minLength": 1, "maxLength": 64},
+            "text": {"type": "string", "minLength": 1, "maxLength": 16000},
+            "user_text": {"type": "string", "minLength": 1, "maxLength": 16000},
+            "before_turn": {"type": "integer", "minimum": 0, "maximum": 63},
+            "authority": {"const": "HUMAN_INSTRUCTION_NOT_PERMISSION"},
+        }),
         "ReflectionRecorded": REFLECTION,
     }
+    shapes["WorkToolRecorded"]["properties"]["change_review"] = CHANGE_REVIEW
     shapes["WorkTurnRecorded"]["properties"]["learning_profile_sha256"] = HASH
     shapes["WorkTurnRecorded"]["properties"]["context_snapshot"] = {"type": "object"}
     require(kind in shapes and Draft202012Validator(shapes[kind]).is_valid(payload))
@@ -119,6 +137,13 @@ def apply_event(state, event):
             require(len({row["path"] for row in continued["artifacts"]}) == len(continued["artifacts"]),
                     "WORK_ARTIFACT_BINDING")
             state["work_artifacts"] = {row["path"]: deepcopy(row) for row in continued["artifacts"]}
+    elif kind == "WorkInstructionRecorded":
+        require(state.get("work_session") and not state.get("work_result"), "WORK_CONTEXT")
+        require(payload["before_turn"] == len(state["work_turns"])
+                and payload["before_turn"] < state["work_session"]["max_turns"], "WORK_CONTEXT")
+        instructions = state.setdefault("work_instructions", [])
+        require(not any(row["id"] == payload["id"] for row in instructions), "WORK_CONTEXT")
+        instructions.append({**deepcopy(payload), **stamp})
     elif kind == "WorkTurnRecorded":
         require(state.get("work_session") and not state.get("work_result"), "WORK_CONTEXT")
         require(payload["index"] == len(state["work_turns"])
@@ -134,6 +159,20 @@ def apply_event(state, event):
                         and row["request"]["id"] == payload["request"]["id"]
                         for row in state["work_tools"]), "WORK_TOOL_DUPLICATE")
         tool = payload["request"]["tool"]
+        review = payload.get("change_review")
+        if review is not None:
+            require(tool in ("write_candidate", "copy_asset")
+                    and review["path"] == payload["request"]["path"]
+                    and review["request_id"] == payload["request"]["id"], "WORK_REVIEW_BINDING")
+            if review["mode"] == "BYPASS_RUN":
+                require(any(row.get("change_review", {}).get("mode") == "BYPASS_GRANTED"
+                            and row["change_review"]["grant_id"] == review["grant_id"]
+                            for row in state["work_tools"]), "WORK_REVIEW_BINDING")
+            if review["mode"] == "BYPASS_GRANTED":
+                require(review["grant_id"] == review["review_id"], "WORK_REVIEW_BINDING")
+            if payload["status"] == "SUCCEEDED":
+                require(review["mode"] != "DENIED" and payload["artifact"] is not None
+                        and review["after_sha256"] == payload["artifact"]["sha256"], "WORK_REVIEW_BINDING")
         if payload["status"] == "SUCCEEDED":
             require(tool in ("read_file", "read_candidate", "write_candidate", "copy_asset", "list_files",
                              "ask_stack_experience", "suggest_owner_update", "request_model_change",

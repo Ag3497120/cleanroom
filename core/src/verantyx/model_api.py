@@ -45,13 +45,18 @@ def _require(condition, reason, code="BRIDGE_CONFIG"):
 
 
 def validate_config(value):
-    _require(type(value) is dict and FIELDS <= set(value) <= FIELDS | {"thinking", "context_window"}, "MODEL_API_CONFIG")
+    _require(type(value) is dict and FIELDS <= set(value) <= FIELDS | {"thinking", "context_window", "reasoning_effort"}, "MODEL_API_CONFIG")
     _require(value["format"] == FORMAT and value["provider"] in PROVIDERS, "MODEL_API_PROVIDER")
     if "thinking" in value:
-        _require(value["provider"] == "ollama" and (type(value["thinking"]) is bool or value["thinking"] == "auto"), "MODEL_API_CONFIG")
+        _require(value["provider"] == "ollama" and (type(value["thinking"]) is bool or value["thinking"] in ("auto", "low", "medium", "high")), "MODEL_API_CONFIG")
     if "context_window" in value:
-        _require(value["provider"] == "ollama" and type(value["context_window"]) is int
-                 and value["context_window"] in (8192, 16384, 32768, 65536, 131072, 262144), "MODEL_API_CONFIG")
+        _require(type(value["context_window"]) is int and 4096 <= value["context_window"] <= 2000000, "MODEL_API_CONFIG")
+    if "reasoning_effort" in value:
+        supported = {"openai": ("none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"),
+                     "openai_compatible": ("none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"),
+                     "anthropic": ("low", "medium", "high", "xhigh", "max"),
+                     "gemini": ("minimal", "low", "medium", "high")}
+        _require(value["reasoning_effort"] in supported.get(value["provider"], ()), "MODEL_API_CONFIG")
     _require(type(value["model"]) is str and bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}", value["model"])), "MODEL_API_MODEL")
     key = value["key_env"]
     _require(key is None or (type(key) is str and bool(re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,127}", key))), "MODEL_API_KEY_ENV")
@@ -122,7 +127,7 @@ def generation_policy(config, value):
     elif mode == "auto" and value.get("format") == "verantyx.editor-request.v1":
         count = len(value["interpretation_proposal"]["interpretations"])
     reserve = mode == "auto" and count >= 16
-    return {"thinking": bool(mode) and not reserve, "stream": bool(mode),
+    return {"thinking": (mode if mode in ("low", "medium", "high") else bool(mode) and not reserve), "stream": bool(mode),
             "reserve_output": reserve, "output_tokens": config["max_output_tokens"]}
 
 
@@ -142,22 +147,28 @@ def payload(config, value):
         if provider == "openai_compatible" and urlsplit(config["endpoint"]).path.endswith("/chat/completions"):
             return {"model": model,
                     "messages": [{"role": "system", "content": INSTRUCTIONS}, {"role": "user", "content": chat_content}],
-                    "max_tokens": tokens, "response_format": {"type": "json_object"}, "stream": False}
+                    "max_tokens": tokens, "response_format": {"type": "json_object"}, "stream": False,
+                    **({"reasoning_effort": config["reasoning_effort"]} if config.get("reasoning_effort") else {})}
         return {"model": model, "instructions": INSTRUCTIONS,
                 "input": [{"role": "user", "content": [{"type": "input_text", "text": prompt}] +
                           [{"type": "input_image", "image_url": url} for url in image_urls]}] if images else prompt,
                 "max_output_tokens": tokens, "text": {"format": {"type": "json_object"}},
-                "stream": False, "store": False, "tools": []}
+                "stream": False, "store": False, "tools": [],
+                **({"reasoning": {"effort": config["reasoning_effort"]}} if config.get("reasoning_effort") else {})}
     if provider == "anthropic":
         return {"model": model, "system": INSTRUCTIONS, "messages": [{"role": "user", "content":
                 ([{"type": "text", "text": prompt}] + [{"type": "image", "source": {
                     "type": "base64", "media_type": item["mime_type"], "data": item["data"]}} for item in images]) if images else prompt}],
-                "max_tokens": tokens, "stream": False}
+                "max_tokens": tokens, "stream": False,
+                **({"output_config": {"effort": config["reasoning_effort"]}, "thinking": {"type": "adaptive"}}
+                   if config.get("reasoning_effort") else {})}
     if provider == "gemini":
         return {"systemInstruction": {"parts": [{"text": INSTRUCTIONS}]},
                 "contents": [{"role": "user", "parts": [{"text": prompt}] +
                              [{"inlineData": {"mimeType": item["mime_type"], "data": item["data"]}} for item in images]}],
-                "generationConfig": {"maxOutputTokens": tokens, "candidateCount": 1, "responseMimeType": "application/json"}}
+                "generationConfig": {"maxOutputTokens": tokens, "candidateCount": 1, "responseMimeType": "application/json",
+                                     **({"thinkingConfig": {"thinkingLevel": config["reasoning_effort"]}}
+                                        if config.get("reasoning_effort") else {})}}
     from verantyx.ollama_schema import output_schema
     policy = generation_policy(config, value)
     from verantyx.agent_schema import FORMATS as AGENT_FORMATS
@@ -243,7 +254,7 @@ def payload(config, value):
         window = config.get("context_window", 65536)
         if budget > window:
             raise LedgerError("SHARED_CONTEXT_LIMIT", {"reason": "SHARED_CONTEXT_BUDGET", "budget": budget, "limit": window})
-        options["num_ctx"] = max(8192, 1 << (budget - 1).bit_length())
+        options["num_ctx"] = window if "context_window" in config else max(8192, 1 << (budget - 1).bit_length())
     # Chat supports separate thinking/content with the tested Qwen renderer.
     # Endpoint choice is explicit and hashed; no implicit fallback or retry.
     content = ({"messages": [{"role": "system", "content": instructions}, {"role": "user", "content": prompt}]}
@@ -394,7 +405,7 @@ def request(config, value, observer=None):
     _require(type(value) is dict and value.get("format") in ("verantyx.proposal-request.v1", "verantyx.learning-request.v1", "verantyx.response-request.v1",
              "verantyx.handoff-plan-request.v1", "verantyx.editor-request.v1", "verantyx.asset-workflow-request.v1",
              "verantyx.work-agent-request.v1", "verantyx.reflection-request.v1",
-             "verantyx.reflection-skills-request.v1", "verantyx.personal-growth-request.v1"),
+             "verantyx.reflection-skills-request.v1", "verantyx.personal-growth-request.v1", "verantyx.session-summary-request.v1"),
              "MODEL_API_REQUEST_FORMAT", "BRIDGE_PROTOCOL")
     # Keep generation-schema property order: interpretations must be generated
     # before relations/cases that refer to them. Canonical hashing of recorded

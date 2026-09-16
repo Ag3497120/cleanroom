@@ -4,6 +4,43 @@
 
 Cleanroom es un espacio de desarrollo colaborativo basado en Vera Kernel. Aunque la IA realice gran parte de la implementación, conservas el propósito, las decisiones, los métodos de verificación, los fallos y la comprensión técnica del proyecto.
 
+## Una ruta breve por los controles actuales
+
+Una instalación nueva de `verantyx setup` empieza en inglés. Al elegir idioma cambian las guías y explicaciones. Al salir por primera vez se ofrece un tutorial simulado. Escribe `verantyx` dentro para pasar a la CLI real, o `/done` para salir de la práctica. El aviso de tamaño no bloquea.
+
+Desde 120 columnas × 28 filas se usan paneles iguales en paralelo; desde 80 × 48 pueden apilarse. Las ventanas menores muestran el panel activo sin bloquear. Enter vacío sigue recorriendo Agent, Nota y Buscar. La fuente del terminal se cambia en su aplicación; el ensayo web tiene controles de tamaño.
+
+### Comprender mientras el trabajo sigue
+
+No hace falta esperar a que el proyecto termine.
+
+- **Conversación continua.** Peticiones con fondo, respuestas sin fondo y actividad del sistema por separado. Un indicador giratorio y un pulso suave muestran trabajo en curso.
+- **Una explicación útil, opcional.** En pasos seguros, Owner puede mostrar notas de implementación dentro de tu presupuesto de sugerencias. Envía un ID como `L-000001` para preguntar sin sustituir la tarea. Una llamada larga a una herramienta termina primero.
+- **Estimaciones, no promesas.** Si la IA las proporciona, implementación y pruebas tienen rangos separados. Se suma el tiempo medido de las preguntas; el siguiente turno puede revisar la estimación. La ausencia o antigüedad se indica expresamente.
+- **Tu ritmo.** Anota, consulta, delega o retómalo después. Preguntar, omitir, importar una habilidad o conceder permiso no certifica comprensión.
+
+`/verantyx new` en Agent crea solo una conversación Agent. Los Cleanrooms de Owner tienen nombres y confirmaciones independientes. Los cambios candidatos ofrecen **una vez / este espacio / permanente / rechazar**, no autorización para publicar ni adoptar en el proyecto principal.
+
+[Aprendizaje en curso, sesiones, permisos y almacenamiento](../../docs/live-learning-and-sessions.md) · [Conversación y revisión de cambios](../../docs/conversation-and-change-review.md)
+
+| Entrada | Acción |
+|---|---|
+| `verantyx new [name]` | Nueva conversación Agent, conserva Owner |
+| `verantyx new --owner [name]` | Crear un Cleanroom Owner desde el shell, previa confirmación |
+| `verantyx cleanroom [name]` | Listar Cleanrooms Owner, confirmar antes de cambiar |
+| `verantyx compact` | Compactar contexto con fuentes mediante IA sin borrar originales |
+| `/insights` | Ver explicaciones recientes recogidas durante la implementación |
+| `L-000001` | Preguntar sobre esa nota en un paso seguro |
+| `/approvals` | Revisar permisos de cambios candidatos |
+| `/queue` | Poner una entrada en cola o aplicarla en el siguiente paso seguro |
+
+Las notas Owner tienen fecha y hora en una base SQLite local privada. La interfaz carga páginas y busca en las notas guardadas. Los eventos originales siguen en el registro del proyecto. Los resúmenes de IA son vistas adicionales con fuentes, no reemplazos. Esto reduce la memoria en el uso habitual, sin prometer memoria constante para reproducir o exportar todo el registro.
+
+El ensayo reproduce cambios de entrada, referencias, notas, conversación continua y elecciones de ejemplo. Los datos permanecen en esta pestaña, no en la base de la CLI. Las estimaciones y resultados del guion no son trabajo real ni evidencia. Suscripciones, compactación real, sesiones duraderas y edición requieren la CLI local; Pedir a mi IA es una conexión explícita aparte.
+
+[Controles actuales](../../docs/two-pane-interaction.md) · [Aprendizaje y sesiones](../../docs/live-learning-and-sessions.md) · [Grabación en inglés](../../docs/DEMO_RECORDING.md)
+
+
 ## 01 / Empezar en tu equipo
 
 Crea un entorno nuevo con Python 3.11+ en cada equipo. La ruta Linux no certifica todas las distribuciones. En Windows usa WSL2, no Windows nativo. Después de activar el entorno, entra en tu propio proyecto.
@@ -14,7 +51,7 @@ cd cleanroom
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -e ./core
-verantyx setup accounts
+verantyx setup
 verantyx
 ```
 
@@ -45,7 +82,7 @@ Pulsa Enter con el campo vacío: Agent → nota Owner amarilla → búsqueda Own
 
 Escribe al menos los dos primeros caracteres de un elemento Owner, elige con las flechas y pulsa Tab para insertar la referencia. Con sugerencias abiertas, Enter selecciona; no envía la petición.
 
-La división horizontal requiere 140 columnas y 24 filas. Con 90 columnas y 36 filas se apilan; en pantallas menores se muestra el lado activo. En Mac puede hacer falta Fn y configurar Option para enviar Escape. También puedes usar el menú F2.
+Desde 120 columnas × 28 filas se usan paneles iguales en paralelo; desde 80 × 48 pueden apilarse. Las ventanas menores muestran el panel activo sin bloquear. Enter vacío sigue recorriendo Agent, Nota y Buscar. La fuente del terminal se cambia en su aplicación; el ensayo web tiene controles de tamaño.
 
 ```sh
 VERANTYX_REDUCE_MOTION=1 verantyx

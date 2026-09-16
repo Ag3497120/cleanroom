@@ -40,9 +40,13 @@ class ConsoleTests(unittest.TestCase):
     def test_bare_configured_command_starts_console_in_every_language(self):
         remember_adapter(self.root, adapter_info(self.adapter))
         for locale in LANGUAGES:
-            code, output = self.terminal("/quit\n", locale=locale)
+            with mock.patch("verantyx.session_commands.authorize_workspace", return_value=True), \
+                    mock.patch("verantyx.terminal_ui.capable_terminal", return_value=False), \
+                    mock.patch("verantyx.development_console.interact", return_value={"ok": True}) as interact:
+                code, output = self.terminal("/quit\n", locale=locale)
             self.assertEqual(code, 0)
-            self.assertIn(catalog(locale)["console.prompt"], output)
+            interact.assert_called_once()
+            self.assertFalse(interact.call_args.kwargs["onboarding"])
             self.assertEqual(self.fixture.invocations(), [])
 
     def test_json_start_never_waits_calls_network_or_writes(self):

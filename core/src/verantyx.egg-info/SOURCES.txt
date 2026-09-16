@@ -1,3 +1,4 @@
+LICENSE
 README.md
 pyproject.toml
 docs/OWNERSHIP_MVP.ja.md
@@ -16,9 +17,12 @@ src/verantyx/asset_workflow.py
 src/verantyx/assets.py
 src/verantyx/atlas_data.py
 src/verantyx/atlas_server.py
+src/verantyx/attachment_inputs.py
 src/verantyx/authority.py
 src/verantyx/bridge_console.py
 src/verantyx/bridges.py
+src/verantyx/change_review.py
+src/verantyx/choice_navigation.py
 src/verantyx/claude_cli.py
 src/verantyx/cleanroom_growth.py
 src/verantyx/cleanroom_io.py
@@ -63,8 +67,11 @@ src/verantyx/commands_workflow.py
 src/verantyx/config.py
 src/verantyx/connections_v05.py
 src/verantyx/console.py
+src/verantyx/console_copy.py
 src/verantyx/constitution.py
 src/verantyx/context_handoff.py
+src/verantyx/conversation_ux.py
+src/verantyx/conversation_view.py
 src/verantyx/coordination.py
 src/verantyx/coordination_schema.py
 src/verantyx/cross-build.json
@@ -79,10 +86,14 @@ src/verantyx/external_capture.py
 src/verantyx/governance.py
 src/verantyx/growth.py
 src/verantyx/i18n.py
+src/verantyx/input_recall.py
 src/verantyx/integration.py
+src/verantyx/interaction_text.py
+src/verantyx/interaction_ux.py
 src/verantyx/jobs.py
 src/verantyx/judgment_compiler.py
 src/verantyx/keep_console.py
+src/verantyx/keyboard_protocol.py
 src/verantyx/learning.py
 src/verantyx/learning_capture.py
 src/verantyx/learning_console.py
@@ -92,9 +103,11 @@ src/verantyx/learning_guides.py
 src/verantyx/learning_materials.py
 src/verantyx/learning_moments.py
 src/verantyx/learning_resources.py
+src/verantyx/live_learning_ux.py
 src/verantyx/local_proposal.py
 src/verantyx/model_api.py
 src/verantyx/model_observation.py
+src/verantyx/model_preferences.py
 src/verantyx/model_roles.py
 src/verantyx/model_settings.py
 src/verantyx/notebook_bridge.py
@@ -103,6 +116,7 @@ src/verantyx/notification_http.py
 src/verantyx/notifications.py
 src/verantyx/ollama_schema.py
 src/verantyx/ollama_stream.py
+src/verantyx/onboarding_walkthrough.py
 src/verantyx/oracles.py
 src/verantyx/owner_experience.py
 src/verantyx/owner_notebook.py
@@ -124,6 +138,11 @@ src/verantyx/responses.py
 src/verantyx/sandbox_backends.py
 src/verantyx/security_journal.py
 src/verantyx/service_runtime.py
+src/verantyx/session_commands.py
+src/verantyx/session_context.py
+src/verantyx/session_store.py
+src/verantyx/session_text.py
+src/verantyx/session_ux.py
 src/verantyx/settings_console.py
 src/verantyx/shared_context.py
 src/verantyx/skill_assets.py
@@ -137,11 +156,14 @@ src/verantyx/subscription_cli.py
 src/verantyx/subscription_setup.py
 src/verantyx/terminal_ui.py
 src/verantyx/verification.py
+src/verantyx/volatile_chat.py
 src/verantyx/work_boundary.py
 src/verantyx/work_checks.py
 src/verantyx/work_harness.py
+src/verantyx/work_input.py
 src/verantyx/work_loop.py
 src/verantyx/work_output.py
+src/verantyx/work_pulse.py
 src/verantyx/work_tools.py
 src/verantyx/workflow_presentation.py
 src/verantyx/writers.py
@@ -250,6 +272,7 @@ tests/test_governance_audit.py
 tests/test_governance_extended.py
 tests/test_handoff_bottlenecks_v072.py
 tests/test_integration.py
+tests/test_interaction_upgrade.py
 tests/test_job_collection_v070.py
 tests/test_jobs.py
 tests/test_learning.py
@@ -279,6 +302,7 @@ tests/test_reuse_bottlenecks_v072.py
 tests/test_scoped_delivery_mvp.py
 tests/test_service_archive_connections.py
 tests/test_service_control_connections.py
+tests/test_session_store_regression.py
 tests/test_shared_context.py
 tests/test_skill_policy_mvp.py
 tests/test_skills_home_cli.py

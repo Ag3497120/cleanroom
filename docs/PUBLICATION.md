@@ -40,7 +40,7 @@ The author's “sanctuary” explanation is a personal interpretation, not a cla
 
 ## Sources and interpretation
 
-The X post's URL, author and original posting date have not been provided. The supplied Japanese excerpt is attributed only as supplied material. Discussion summaries are not verbatim model transcripts or evidence that old quantitative claims are true. Device names, private workspace paths and tokens are excluded from the public origin notes.
+The source is [the X post by @2020_hira](https://x.com/2020_hira/status/2096386633595867274), whose URL was supplied by the project author. The Japanese excerpt is preserved as supplied source material, not as Cleanroom's own writing. The original posting date has not been independently verified. Attribution does not imply endorsement or transfer of copyright. Discussion summaries are not verbatim model transcripts or evidence that old quantitative claims are true. Device names, private workspace paths and tokens are excluded from the public origin notes.
 
 ## Shared website and Vercel packaging
 

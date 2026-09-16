@@ -6,24 +6,24 @@ from copy import deepcopy
 
 
 def entries(run_id=None, limit=100):
-    rows = capture.traces()
-    known = {row["event"]["source_ref"] for row in rows}
     result = []
-    for row in rows:
-        if run_id and row["run_id"] != run_id:
-            continue
+    limit = max(1, min(int(limit), 300))
+    for row in capture.iter_traces(run_id, newest=True, limit=max(200, limit * 12)):
+        known = capture.event_sources(row["event"])
         notes, _ = capture.notes_from_event(row["event"], known)
         indexed = [(str(index), note) for index, note in enumerate(notes)]
         indexed += [("pending-" + str(item["index"]), item["note"])
                     for item in capture.pending_notes_from_event(row["event"], known)]
-        for index, note in indexed:
+        for index, note in reversed(indexed):
             result.append({"id": row["id"] + ":" + str(index), "record_id": row["id"],
                            "title": note["title"], "note": note, "run_id": row["run_id"],
                            "provenance_status": note.get("provenance_status", "SOURCE_LINKED"),
                            "work_key": row["work_key"], "source_ref": row["event"]["source_ref"],
                            "profile_version": row.get("profile_snapshot_sha256"),
                            "authority": "AI_EXPLANATION_NOT_HUMAN_MASTERY"})
-    return list(reversed(result))[:limit]
+        if len(result) >= limit:
+            break
+    return result[:limit]
 
 
 def get(identity):
@@ -31,7 +31,7 @@ def get(identity):
     record_id, index = identity.rsplit(":", 1)
     row = profile.get_record(record_id)
     profile.require(row and row["kind"] == "learning_trace", "LEARNING_MOMENT_REQUIRED")
-    known = {r["event"]["source_ref"] for r in capture.traces()}
+    known = capture.event_sources(row["event"])
     if index.startswith("pending-") and index[8:].isdecimal():
         raw_index = int(index[8:])
         for item in capture.pending_notes_from_event(row["event"], known):

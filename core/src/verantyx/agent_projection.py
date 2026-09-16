@@ -56,6 +56,7 @@ def owner_projection(state):
         "human_notes": deepcopy(owned["notes"]),
         "owner_experience": deepcopy(owned),
         "human_reply": deepcopy(state.get("work_owner_reply")),
+        "human_instructions": deepcopy(state.get("work_instructions", [])),
         "declared_ai_assumptions": [{"text": text, "source_ref": turn["source_ref"],
                                      "authority": "AI_DECLARED_UNVERIFIED"}
                                     for turn in state.get("work_turns", [])

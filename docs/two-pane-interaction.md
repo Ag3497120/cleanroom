@@ -155,3 +155,13 @@ Límites:4archivos,25 MiB/original,12páginas/imágenes,120.000bytes UTF-8 de te
 //es charla temporal sin contexto de proyecto/perfil, herramientas ni registros de trabajo, aprendizaje, habilidades o historial de entrada. Turnos recientes permanecen en RAM hasta una petición normal o/close. Los registros temporales se eliminan tras llamar; esto no garantiza ausencia de registros del proveedor, sistema o terminal.
 
 La primera vez se recomiendan140columnas×24filas sin bloquear. Enter inicia práctica simulada; Esc omite. No llama a IA ni escribe notas reales; solo recuerda que se ofreció. /tutorial repite y/done termina. Algunas etiquetas heredadas no están traducidas.
+
+
+## Continuous conversation and change review
+
+[English / 日本語 / 简体中文 / 한국어 / Español: conversation, queue, diffs and Owner focus](conversation-and-change-review.md)
+
+Candidate-edit approvals appear inside the Agent composer without taking focus from Owner. Empty Enter continues to cycle inputs. Once, workspace and permanent candidate-edit grants are separate from source adoption, deletion, shell, publication and external-harness permissions. Saved grants can be revoked.
+
+
+[Live insights, independent Cleanrooms, context and model tuning / 実装中の理解・セッション・文脈・モデル設定](live-learning-and-sessions.md)

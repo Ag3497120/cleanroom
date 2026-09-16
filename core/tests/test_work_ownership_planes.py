@@ -12,14 +12,14 @@ from verantyx import config
 from verantyx import agent_runtime as runtime
 from verantyx.agent_models import selected_work, select_reflection
 from verantyx.agent_projection import owner_projection
-from verantyx.agent_schema import WORK_REQUEST, REFLECTION_REQUEST, native_contract
+from verantyx.agent_schema import WORK_REQUEST, REFLECTION_SKILLS_REQUEST as REFLECTION_REQUEST, native_contract
 from verantyx.errors import LedgerError
 from verantyx.storage.sqlite import EventStore
 
 
 def work(answer="Useful answer", tools=(), status="COMPLETE", question=""):
     return {"format": "verantyx.work-proposal.v1", "status": status, "answer": answer,
-            "tool_requests": list(tools), "owner_question": question, "assumptions": []}
+            "tool_requests": list(tools), "owner_question": question, "assumptions": [], "learning_notes": []}
 
 
 def tool(name, path="", text="", identifier="tool-1"):
@@ -28,7 +28,7 @@ def tool(name, path="", text="", identifier="tool-1"):
 
 def reflection(request, text="A project-specific principle", kind="REVIEW"):
     source = request["trace"]["events"][0]["source_ref"]
-    return {"format": "verantyx.reflection-proposal.v1", "owner_items": [
+    return {"format": "verantyx.reflection-proposal.v2", "skill_candidates": [], "owner_items": [
         {"kind": kind, "text": text, "reason": "Supported by the selected work record.",
          "source_event_ids": [source], "minimum_model": "Explain the boundary.",
          "counterexample": "A claim without a receipt.", "understanding_check": "Identify the missing evidence."}
@@ -37,6 +37,9 @@ def reflection(request, text="A project-specific principle", kind="REVIEW"):
 
 class Planes(TestCase):
     def setUp(self):
+        harness_call = mock.patch("verantyx.work_harness.invoke", side_effect=lambda *args, **kwargs: runtime.invoke(*args, **kwargs))
+        harness_call.start()
+        self.addCleanup(harness_call.stop)
         self.tmp = TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
@@ -91,7 +94,7 @@ class Planes(TestCase):
         def call(root, adapter, request, **kwargs):
             self.calls.append(request["format"])
             return self.model(work("Here is the requested response.") if request["format"] == WORK_REQUEST else
-                              {"format": "verantyx.reflection-proposal.v1", "owner_items": []})
+                              {"format": "verantyx.reflection-proposal.v2", "skill_candidates": [], "owner_items": []})
         with mock.patch.object(runtime, "invoke", side_effect=call), \
                 mock.patch("verantyx.constitution.prepare", side_effect=AssertionError("legacy semantic gate called")):
             for request in ("これを整理して", "JSONという形式でこのAjax課題を整理して", "同じ課題の要点を文章でまとめて"):
@@ -169,7 +172,7 @@ class Planes(TestCase):
         protected.write_text("Keep this file")
         def call(root, adapter, request, **kwargs):
             if request["format"] == REFLECTION_REQUEST:
-                return self.model({"format": "verantyx.reflection-proposal.v1", "owner_items": []})
+                return self.model({"format": "verantyx.reflection-proposal.v2", "skill_candidates": [], "owner_items": []})
             if not request["turns"]:
                 return self.model(work("Proposing operations", [
                     tool("delete_file", "keep.txt", identifier="delete"),
@@ -227,7 +230,7 @@ class Planes(TestCase):
     def test_owner_question_and_actual_reply_do_not_grant_tool_rights(self):
         def call(root, adapter, request, **kwargs):
             if request["format"] == REFLECTION_REQUEST:
-                return self.model({"format": "verantyx.reflection-proposal.v1", "owner_items": []})
+                return self.model({"format": "verantyx.reflection-proposal.v2", "skill_candidates": [], "owner_items": []})
             if request["request"] == "First":
                 return self.model(work("Two tradeoffs remain", status="NEEDS_OWNER", question="Keep compatibility?"))
             return self.model(work("Keep compatibility in the proposal."))

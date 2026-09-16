@@ -1,47 +1,59 @@
-# Programmed CLI recording / CLIのプログラム録画
+# English CLI walkthrough
 
-The GIF under the README logo is produced by the real Python Cleanroom TUI renderer.
-The work backend and ledger read are replaced by explicit public fixtures in the recording driver.
-Input, empty-Enter cycling, local memo storage, search, reference completion, pane scrolling and the transfer animation use the actual CLI UI.
+The README and both website source trees use a recording of the actual Python Cleanroom terminal UI, set to English. The recording runs in a pseudoterminal and sends the real keyboard events. Only the external work and ledger-polling inputs are replaced with labelled, public fixtures.
 
-It is not a real-model evaluation, a sandbox test, or proof that a project was implemented.
-No credentials, personal profile, real workspace files or prior conversations are read.
-The recording has a permanent fixture label. The fixture config explicitly sets `ui.locale` to `en`.
-English chapter captions and key hints explain each action. They describe the interaction, not model performance.
+**It is an interaction demonstration, not a live-model benchmark, a test receipt or a claim of human understanding.** No model, API, shell work tool or real project is invoked by the fixture. Candidate diffs and time ranges are examples. Choosing a permission in the recording does not create a real permission grant.
+
+## What the 34-second recording shows
+
+| Time | Interaction |
+|---|---|
+| 0s | Ask normally. Your request has a background. The answer stays separate from system activity. |
+| 4s | Understanding does not wait for the finish. A small optional note arrives during work, with a stable L-number. |
+| 8s | Ask about one insight without replacing the work. Send L-000001. This recorded explanation is scripted; no model is called. |
+| 12s | Keep a private memo. Empty Enter moves to the yellow Owner field. Your note is not sent to AI. |
+| 17s | Review a candidate, without losing your place. A choice appears in Agent. Owner keeps focus until you switch back. |
+| 21s | Find and reuse only what matters. Green searches Owner. A title prefix and Tab insert a chosen reference. |
+| 26s | A conversation, not a screen that resets. The next question joins the same conversation. Your notebook stays beside it. |
+| 30s | Your pace. Your own notebook. Scroll the active side while the other keeps its place. No homework list. |
+
+The side-question answer is scripted, not a model call. The ordinary memo key handler writes only to an isolated temporary profile. It does not access the user's personal notebook. All fixture storage is removed when recording ends.
 
 ## Reproduce
 
-Install the CLI source first as described in README. For recording only, install ffmpeg and uv.
-Capture dependencies do not become runtime CLI dependencies.
+Run from the repository root on macOS or Linux, with Python 3.11+, `uv` and `ffmpeg` available:
 
-```sh
+~~~sh
 uv run --with pillow --with pyte --with ./core python scripts/record-cli-demo.py
-```
+~~~
 
-Outputs under public/cleanroom:
+Alternatively, install the CLI and optional recording libraries into a dedicated environment:
 
-- cli-demo.gif: README animation
-- cli-demo.mp4: browser video with explicit controls
-- cli-demo-poster.png: static, reduced-motion-friendly poster
-- cli-demo.cast: public ANSI trace
+~~~sh
+python3 -m venv .demo-venv
+source .demo-venv/bin/activate
+python -m pip install -e ./core pillow pyte
+python scripts/record-cli-demo.py
+~~~
 
-macOS uses system Menlo and Hiragino fonts. On Linux, provide a suitable monospace font through CLEANROOM_DEMO_FONT; CJK fallback may require adapting the font path.
-The scripted process uses a fresh temporary directory which is removed after capture.
-It never uses a real project as its fixture.
+This recorder uses POSIX pseudoterminal APIs. On Windows, run it inside a suitable Linux/WSL environment; native Windows capture is not claimed.
 
-## What is shown in under 30 seconds
+`CLEANROOM_DEMO_FONT=/absolute/path/to/a/monospace.ttf` selects another font. Menlo is preferred on macOS; DejaVu Sans Mono is the Linux fallback. The output uses 140 columns by 38 rows, 14px terminal glyphs and separate chapter captions so the purpose of each action is visible.
 
-1. A normal English Agent request, visible in the opening seconds.
-2. Fixture work and an Owner learning proposal.
-3. Empty Enter to the yellow memo; a real local note is saved in the temporary fixture.
-4. Empty Enter to the green search field.
-5. Return to Agent; type an Owner prefix and press Tab.
-6. Page scrolling in the active pane; the other pane's viewport is independent.
-7. The existing F2 menu: profile, journal, skills and next-time options.
+## Outputs
 
-The recorder uses the same Python interpreter as its launcher, an isolated temporary
-workspace, and public fixture data. No real-model call is made. The permanent caption
-remains in GIF, MP4 and poster. Timed VTT tracks provide five-language captions.
+- `public/cleanroom/cli-demo.gif`: README and optional website GIF.
+- `public/cleanroom/cli-demo.mp4`: website video with pause/seek controls.
+- `public/cleanroom/cli-demo-poster.png`: static, reduced-motion alternative.
+- `public/cleanroom/cli-demo.cast`: public fixture terminal output, not private project history.
+- `public/cleanroom/cli-demo.{en,ja,zh-Hans,ko,es}.vtt`: translated chapter captions.
 
-実モデルの結果と誤解させないため、録画内・README・Webの横の説明にデモデータであることを表示します。
-実プロジェクトや私的なノートをこの録画に混ぜないでください。
+The English screen is the same for all caption languages. Both website copies embed the same assets. The website opens the animated GIF only when requested and also offers the controllable MP4 and static image. GitHub clients control README GIF playback; the static alternative is linked directly below it.
+
+An early child-process exit aborts generation rather than publishing a partial recording as a completed walkthrough. Successful recording alone does not establish CLI regression, provider, deployment, keyboard-compatibility or accessibility coverage.
+
+## 日本語
+
+英語設定の実CLIへキー操作を送り、画面をプログラムで収録します。モデル処理と作業データだけを明示した説明用データに置き換えます。L番号への解説・予想時間・変更候補は例であり、実モデルの応答やテスト合格を示しません。
+
+個人用DBとワークスペースは一時ディレクトリに隔離し、実際のプロフィール・認証情報・作業台帳を動画へ含めません。メモ入力には通常のUI処理を使いますが、保存先は一時プロフィールだけです。READMEとWebのGIF、再生操作付き動画、静止画を同じ収録から作ります。全体の回帰テストや本番配信とは別の工程です。

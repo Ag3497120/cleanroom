@@ -1,3 +1,5 @@
+from .session_ux import SessionUX
+from .live_learning_ux import LiveLearningUX
 """An Agent request field and local Owner memo/search field, not two agents.
 
 Domain mutations stay inside existing authority gates. Model work uses one
@@ -25,6 +27,8 @@ from .terminal_ui import capable_terminal
 from .interaction_ux import InteractionUX, SETTINGS_ACTIONS
 from .interaction_text import tr
 from .input_recall import InputRecall
+from .conversation_ux import ConversationUX
+from .console_copy import ui_text
 
 
 class OwnerCancelled(Exception):
@@ -39,15 +43,18 @@ class Question:
     default: str = ""
     descriptions: dict | None = None
     aliases: dict | None = None
+    inline: bool = False
+    preview: dict | None = None
 
 
-class Cleanroom(InteractionUX):
+class Cleanroom(LiveLearningUX, SessionUX, ConversationUX, InteractionUX):
     def __init__(self, root, configuration, *, readonly=False, run_id=None, initial_request=None, practice=False):
         self.root, self.configuration = Path(root), configuration
         self.readonly, self.selected, self.initial_request = readonly, run_id, initial_request
         self.session_id = uuid.uuid4().hex
         self.reader = None if practice else Reader(root, configuration)
         self._init_interaction(practice)
+        self._init_conversation()
         self.recall = InputRecall()
         self.read_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cleanroom-ledger")
         self.work_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cleanroom-owner")
@@ -86,10 +93,12 @@ class Cleanroom(InteractionUX):
         self.last_result = None
         self.loop = None
         self.work_task = None
+        self._init_sessions()
         self._build()
 
     def _tr(self, en, ja):
-        return en if self.configuration.get("ui", {}).get("locale") == "en" else ja
+        lang = self.configuration.get("ui", {}).get("locale", "en")
+        return ja if lang == "ja" else ui_text(en, lang)
 
     def _build(self):
         from prompt_toolkit.application import Application
@@ -108,33 +117,43 @@ class Cleanroom(InteractionUX):
 
         from .cleanroom_owner import OwnerCompleter
         self.output = create_output()
-        completer = ConditionalCompleter(OwnerCompleter(self._visible_owner_items, self.reference_bindings,
-                                                               locale=self.configuration.get("ui", {}).get("locale", "ja")),
+        self.owner_completer = OwnerCompleter(self._visible_owner_items, self.reference_bindings,
+                                              locale=self.configuration.get("ui", {}).get("locale", "en"))
+        from .session_ux import SessionCompleter
+        completer = ConditionalCompleter(SessionCompleter(self, self.owner_completer),
                                          filter=Condition(lambda: self.question is None and not self.readonly
-                                                          and not self.settings_active and not self.input.text.startswith("/")))
+                                                          and not self.settings_active))
         self.input = TextArea(multiline=True, height=Dimension(min=1, max=5),
                               prompt="  > ", accept_handler=self._submit, wrap_lines=True,
                               completer=completer, complete_while_typing=True)
         self.owner_input = TextArea(multiline=True, height=Dimension(min=1, max=4),
-                                    prompt="  > ", accept_handler=self._submit_owner, wrap_lines=True)
+                                    prompt="  > ", accept_handler=self._submit_owner, wrap_lines=True,
+                                    completer=ConditionalCompleter(SessionCompleter(self),
+                                        filter=Condition(lambda: not self.settings_active and not self.readonly)),
+                                    complete_while_typing=True)
+        self.input.window.style = self._agent_input_style
         self.owner_input.window.style = self._owner_style
         self.areas = {name: TextArea(read_only=True, scrollbar=True, wrap_lines=True)
                       for name in ("owner", "agent", "evidence", "notebook", "review")}
-        frames = {name: Frame(area, title=title, width=Dimension(weight=3 if name == "owner" else 2))
-                  for (name, area), title in zip(self.areas.items(), (
-                      self._tr("Owner / Your notebook", "Owner Console / 判断と理解"), self._ux("answer"),
-                      self._tr("Evidence / Recorded checks", "Evidence / 記録した検査"), self._tr("Notebook / What stays with you", "Notebook / 仕事から残るもの"), self._tr("Review / Your choices", "Review / 人間に必要なこと")))}
+        self.areas["agent"].lexer = self.chat_lexer
+        self.areas["owner"].lexer = self.owner_lexer
+        titles = {
+            "owner": lambda: self._ux("owner_title") + " / " + self._session_caption("owner"),
+            "agent": lambda: self._ux("settings") if self.settings_active else self._ux("conversation") + " / " + self._session_caption("agent"),
+            "evidence": lambda: self._tr("Evidence / Recorded checks", "Evidence / 記録した検査"),
+            "notebook": lambda: self._tr("Notebook / What stays with you", "Notebook / 仕事から残るもの"),
+            "review": lambda: self._tr("Review / Your choices", "Review / 人間に必要なこと"),
+        }
+        frames = {name: Frame(area, title=titles[name], width=Dimension(weight=1))
+                  for name, area in self.areas.items()}
         self.frames = frames
-        self.areas["agent"].window.style = "class:answer"
-        frames["agent"].title = lambda: (self._ux("settings") if self.settings_active else
-                                           self._ux("private").split(" / ")[0] if self.volatile_answer is not None else self._ux("answer"))
         self.menu_control = FormattedTextControl(self._menu_text, focusable=True,
                                                  get_cursor_position=lambda: Point(0, self.choice_index))
-        self.menu_window = Window(self.menu_control, wrap_lines=True, height=Dimension(min=2, max=13))
+        self.menu_window = Window(self.menu_control, wrap_lines=True, height=Dimension(min=2, max=8))
         self.choice_body = HSplit([
-            Window(FormattedTextControl(self._question_title), wrap_lines=True, height=Dimension(min=1, max=7)),
+            Window(FormattedTextControl(self._question_title), wrap_lines=True, height=Dimension(min=1, max=3)),
             self.menu_window,
-            Window(FormattedTextControl(self._menu_detail), height=Dimension(min=2, max=5), wrap_lines=True, style="class:detail"),
+            Window(FormattedTextControl(self._menu_detail), height=Dimension(min=2, max=4), wrap_lines=True, style="class:detail"),
             Window(FormattedTextControl(lambda: self._ux("keys")), height=2, wrap_lines=True, style="class:muted"),
         ])
         self.dialog = Frame(self.choice_body, title=self._tr("One choice / Yours to make", "One choice / あなたの選択"), width=Dimension(preferred=76, max=96))
@@ -148,26 +167,37 @@ class Cleanroom(InteractionUX):
         ]), title="Owner / local only"), filter=Condition(lambda: not self.readonly))
         self.agent_column = HSplit([
             frames["agent"],
-            ConditionalContainer(Frame(self.choice_body, title=lambda: self._ux("settings")),
-                                 filter=Condition(lambda: self.settings_active and self.picker is not None)),
             Frame(Window(FormattedTextControl(self._system_text), wrap_lines=True, style="class:muted",
-                         height=lambda: Dimension(min=1, max=8 if self.details_visible else 3)),
+                         height=lambda: Dimension(min=1, max=8 if self.details_visible else 2)),
                   title=lambda: self._ux("activity")),
 
             ConditionalContainer(Window(FormattedTextControl(self._input_title),
                                         height=Dimension(min=1, max=4), wrap_lines=True),
                                  filter=Condition(lambda: not self.readonly)),
-            ConditionalContainer(Frame(self.input, title=self._tr("Agent / What shall we build?", "Agent / あなたからの依頼")),
+            ConditionalContainer(Frame(HSplit([
+                ConditionalContainer(self.choice_body, filter=Condition(self._inline_choice)),
+                self.input,
+            ]), title=lambda: self._work_indicator() or self._tr("Agent / What shall we build?", "Agent / あなたからの依頼")),
                                  filter=Condition(lambda: not self.readonly)),
-        ], width=Dimension(weight=2))
+            ConditionalContainer(Window(FormattedTextControl(lambda: self._tour_hint("agent")), height=3,
+                                        wrap_lines=True, style="class:warning"),
+                                 filter=Condition(lambda: bool(self._tour_hint("agent")))),
+            ConditionalContainer(Window(FormattedTextControl(lambda: self._st("tour_start")), height=2,
+                                        wrap_lines=True, style="class:muted"),
+                                 filter=Condition(lambda: self.practice)),
+        ], width=Dimension(weight=1))
         self.owner_column = HSplit([
+            ConditionalContainer(Window(FormattedTextControl(lambda: self._tour_hint("owner")), height=3, wrap_lines=True, style="class:warning"), filter=Condition(lambda: bool(self._tour_hint("owner")))),
             owner_field,
+            ConditionalContainer(Window(FormattedTextControl(self._review_status), wrap_lines=True,
+                                        height=Dimension(min=1, max=3), style="class:warning"),
+                                 filter=Condition(lambda: bool(self._review_status()))),
             ConditionalContainer(Window(FormattedTextControl(self._handoff_text),
                                         height=Dimension(min=1, max=3), wrap_lines=True, style="class:handoff"),
                                  filter=Condition(lambda: self.handoff is not None)),
             DynamicContainer(lambda: self.frames[self._owner_page()]),
             growth_margin,
-        ], width=Dimension(weight=3))
+        ], width=Dimension(weight=1))
         def outlined(body, name):
             style = lambda: self._pane_border_style(name)
             return HSplit([
@@ -178,7 +208,7 @@ class Cleanroom(InteractionUX):
                 VSplit([Window(char="┃", width=1, style=style), body,
                         Window(char="┃", width=1, style=style)]),
                 Window(char="━", height=1, style=style),
-            ], width=Dimension(weight=2 if name == "agent" else 3))
+            ], width=Dimension(weight=1))
         self.agent_column = outlined(self.agent_column, "agent")
         self.owner_column = outlined(self.owner_column, "owner")
         self.split_side = VSplit([self.agent_column,
@@ -194,12 +224,12 @@ class Cleanroom(InteractionUX):
             Window(FormattedTextControl(self._footer), height=2, wrap_lines=True, style="class:muted"),
         ])
         root = FloatContainer(content=content, floats=[Float(content=ConditionalContainer(
-            self.dialog, filter=Condition(lambda: self.picker is not None and not self.settings_active))),
+            self.dialog, filter=Condition(lambda: self.picker is not None and not self._inline_choice()))),
             Float(xcursor=True, ycursor=True, content=ConditionalContainer(CompletionsMenu(max_height=8, scroll_offset=1),
                 filter=Condition(lambda: self.picker is None and not self.readonly
                                  and self.app.layout.has_focus(self.input))))])
         bindings = KeyBindings()
-        picking = Condition(lambda: self.picker is not None)
+        picking = Condition(self._picker_active)
 
         @bindings.add("up", filter=picking, eager=True)
         def up(event):
@@ -220,32 +250,42 @@ class Cleanroom(InteractionUX):
             self._focus_input()
             picker["callback"](value)
 
-        @bindings.add("enter", filter=Condition(lambda: self.picker is None and not self.readonly and self.app.layout.has_focus(self.input)))
+        @bindings.add("enter", filter=Condition(lambda: not self._picker_active() and not self.readonly and self.app.layout.has_focus(self.input)))
         def submit(event):
             if self.input.buffer.complete_state is not None:
                 self._accept_owner_completion()
                 return
             self.input.buffer.validate_and_handle()
 
-        @bindings.add("enter", filter=Condition(lambda: self.picker is None and not self.readonly and self.app.layout.has_focus(self.owner_input)))
+        @bindings.add("enter", filter=Condition(lambda: not self._picker_active() and not self.readonly and self.app.layout.has_focus(self.owner_input)))
         def submit_owner(event):
+            if self.owner_input.buffer.complete_state is not None:
+                state = self.owner_input.buffer.complete_state
+                if state.completions:
+                    self.owner_input.buffer.apply_completion(state.current_completion or state.completions[0])
+                return
             self.owner_input.buffer.validate_and_handle()
 
+        def eventless_field(session):
+            return session.owner_input if session.app.layout.has_focus(session.owner_input) else session.input
+
         completing = Condition(lambda: self.picker is None and self.question is None and not self.readonly
-                               and self.app.layout.has_focus(self.input) and self.input.buffer.complete_state is not None)
+                               and eventless_field(self).buffer.complete_state is not None)
 
         @bindings.add("down", filter=completing, eager=True)
         def next_reference(event):
-            self.input.buffer.complete_next()
+            eventless_field(self).buffer.complete_next()
 
         @bindings.add("up", filter=completing, eager=True)
         def previous_reference(event):
-            self.input.buffer.complete_previous()
+            eventless_field(self).buffer.complete_previous()
 
-        recalling = Condition(lambda: self.picker is None and self.question is None and not self.readonly
+        recalling = Condition(lambda: not self._picker_active()
+                              and (self.question is None or (self.active_input == "owner" and self._inline_choice()))
+                              and not self.readonly
                               and not self.settings_active and not self.practice
                               and (self.app.layout.has_focus(self.input) or self.app.layout.has_focus(self.owner_input))
-                              and self.input.buffer.complete_state is None)
+                              and eventless_field(self).buffer.complete_state is None)
 
         @bindings.add("up", filter=recalling)
         def recall_previous(event):
@@ -265,7 +305,7 @@ class Cleanroom(InteractionUX):
         @bindings.add("escape", "enter", filter=Condition(lambda: not self.readonly))
         @bindings.add("c-j", filter=Condition(lambda: not self.readonly))
         def newline(event):
-            if self.picker is None:
+            if not self._picker_active():
                 field = self.owner_input if self.app.layout.has_focus(self.owner_input) else self.input
                 field.buffer.insert_text("\n")
 
@@ -276,8 +316,14 @@ class Cleanroom(InteractionUX):
 
         @bindings.add("tab", eager=True)
         def complete_reference(event):
-            if self.picker is not None:
+            if self._picker_active():
                 self.choice_index = (self.choice_index + 1) % len(self.picker["choices"])
+            elif not self.readonly and self.app.layout.has_focus(self.owner_input):
+                field = self.owner_input.buffer
+                if field.complete_state is not None and field.complete_state.completions:
+                    field.apply_completion(field.complete_state.current_completion or field.complete_state.completions[0])
+                else:
+                    field.start_completion(select_first=False)
             elif not self.readonly and self.app.layout.has_focus(self.input) and self.question is None:
                 if self.input.buffer.complete_state is not None:
                     self._accept_owner_completion()
@@ -286,13 +332,15 @@ class Cleanroom(InteractionUX):
 
         @bindings.add("escape", eager=False)
         def back(event):
-            if self.input.buffer.complete_state is not None and self.picker is None:
+            if self.owner_input.buffer.complete_state is not None and self.picker is None:
+                self.owner_input.buffer.cancel_completion()
+            elif self.input.buffer.complete_state is not None and self.picker is None:
                 self.input.buffer.cancel_completion()
-            elif self.picker is not None:
+            elif self._picker_active():
                 picker, self.picker = self.picker, None
                 self._focus_input()
                 picker["callback"](None)
-            elif self.question is not None:
+            elif self.question is not None and (not self.question.inline or self.active_input == "agent"):
                 self._cancel_question()
             elif self.growth_selection is not None:
                 self.growth_selection = None
@@ -326,7 +374,7 @@ class Cleanroom(InteractionUX):
 
         @bindings.add("c-c", eager=True)
         def interrupt(event):
-            if self.question is not None:
+            if self.question is not None and (not self.question.inline or self.active_input == "agent"):
                 self._cancel_question()
             elif not self.readonly and (self.owner_input if self.active_input == "owner" else self.input).text:
                 (self.owner_input if self.active_input == "owner" else self.input).buffer.reset()
@@ -344,7 +392,13 @@ class Cleanroom(InteractionUX):
             "owner.memo": "bg:#483619 fg:#ffe6a1", "owner.search": "bg:#153d2b fg:#bceccc",
             "pane.inactive": "#536770", "pane.agent": "bold #92c7c2",
             "pane.memo": "bold #dec383", "pane.search": "bold #91c6a5",
-            "detail": "#aec9cc", "answer": "#cfe0e4",
+            "detail": "#b5cbd0", "answer": "",
+            "chat.user": "bg:#2d3e4c fg:#f0f4f4", "chat.answer": "",
+            "chat.speaker": "bold #a1d5cf", "chat.meta": "#a7b6bf",
+            "chat.review": "bold #e2c990",
+            "diff.add": "#a8d8af", "diff.remove": "#e5aa9d", "diff.hunk": "bold #9cc9dd",
+            "owner.heading": "bold #afd3d2", "owner.label": "#d6e5e2",
+            "owner.fact": "#b9d9d0", "owner.attention": "#e2c990", "owner.query": "#b5dfbd",
             "boundary": "#698b7a", "handoff": "#c7ba80",
             "completion-menu": "bg:#23372e fg:#e3e6d8",
             "completion-menu.completion.current": "bg:#60795c fg:#ffffff bold",
@@ -353,11 +407,17 @@ class Cleanroom(InteractionUX):
                                full_screen=True, key_bindings=bindings, mouse_support=True, style=style, output=self.output,
                                color_depth=ColorDepth.DEPTH_1_BIT if "NO_COLOR" in os.environ else None,
                                refresh_interval=1 if os.environ.get("VERANTYX_REDUCE_MOTION") == "1" else .3)
+        self._rendered_size = None
         def track_focus(_):
             if self.app.layout.has_focus(self.owner_input):
                 self.active_input = "owner"
             elif self.app.layout.has_focus(self.input):
                 self.active_input = "agent"
+            size = self.output.get_size()
+            dimensions = (size.columns, size.rows, self.focus_name)
+            if dimensions != self._rendered_size:
+                self._rendered_size = dimensions
+                self._render()
         self.app.before_render += track_focus
         self.owner_input.buffer.on_text_changed += self._owner_text_changed
         self.owner_input.buffer.on_text_changed += lambda buffer: self.recall.edited(self.owner_mode)
@@ -367,6 +427,11 @@ class Cleanroom(InteractionUX):
 
     def _owner_page(self):
         return self.focus_name if self.focus_name in ("owner", "evidence", "notebook", "review") else "owner"
+
+    def _pane_width(self, name):
+        size = self.output.get_size()
+        split = self.focus_name == "split" and layout_mode(size.columns, size.rows) == "side"
+        return max(12, ((size.columns - 3) // 2 if split else size.columns) - 6)
 
     def _body(self):
         if self.focus_name == "agent":
@@ -391,11 +456,11 @@ class Cleanroom(InteractionUX):
         else:
             owner, phase = "Owner Console", self.phase
         elapsed = f" / {int(time.monotonic() - self.started)}s" if self.busy and self.started else ""
-        name = safe_text(self.configuration["project"]["name"])
+        name = safe_text(self.configuration.get("project", {}).get("name", self.root.name))
         return (f" CLEANROOM  /  {name}  /  {'READ ONLY' if self.readonly else 'One project, one notebook'}\n"
                 f" {safe_text(run_id)}  r{view.get('revision', 0)} / ledger {view.get('project_revision', 0)} / notes {view.get('owner_note_revision', 0)}\n"
                 f" {freshness}  |  {owner}  |  {safe_text(phase)}{elapsed}\n"
-                f" {self._ux('model')}: {self.model_label}  |  {self._pane_caption(self.active_input)}")
+                f" {self._ux('model')}: {self.model_label}  |  {self._pane_caption(self.active_input)}  |  {self._work_indicator()}")
 
     def _tabs(self):
         fragments = []
@@ -414,26 +479,19 @@ class Cleanroom(InteractionUX):
             message = self._tr("Waiting to reconnect. Last readable view: ", "DBの読み取りを再接続待ち。前回の正常な表示: ") + str((self.view or {}).get("read_at") or self._tr("none yet.", "まだありません。"))
         if self.readonly:
             return " F2 Menu | Alt+1..4 Views | F3 Scroll | F4 Learn | Ctrl+D Close\n " + message
-        return " " + self._ux("footer") + " | Shift+Enter / Alt+Enter / Ctrl+J: newline | Up/Down: history\n " + message
+        return " " + self._ux("footer") + " | /queue  /approvals\n " + (self._review_status() or message)
 
     def _input_title(self):
         if self.question is not None:
-            return (" SETTINGS / " if self.settings_active else " OWNER / ") + safe_text(self.question.title, multiline=True) + (
+            return safe_text(self.question.title, multiline=True) + (
                 " [" + safe_text(self.question.default) + "]" if self.question.default else "")
-        if self.busy:
-            return self._tr(" AGENT / Draft while work runs. Empty Enter opens your memo and search.", " AGENT / 次の依頼を下書きできます。空欄のEnterでOwnerのメモ・検索へ。")
-        count = sum(token in self.input.text for token in self.reference_bindings)
-        return (self._tr(" AGENT / Ask normally. Type two letters of an Owner item; arrows + Tab to reference.", " AGENT / 依頼を書く。Owner項目の先頭2文字から候補、矢印 + Tabで参照。")
-                + (self._tr(f" {count} selected.", f" 選択中 {count}件。") if count else ""))
+        return self._ux("busy_input" if self.busy else "agent_input")
 
     def _owner_style(self):
         return "class:owner.memo" if self.owner_mode == "memo" else "class:owner.search"
 
     def _owner_title(self):
-        if self.owner_mode == "memo":
-            saving = self.note_task is not None and not self.note_task.done()
-            return self._tr(" MEMO / YELLOW / ", " MEMO / 黄色 / ") + (self._tr("Saving", "保存中") if saving else self._tr("Enter saves locally. Empty Enter opens search.", "Enterでローカル保存。空欄のEnterで検索へ"))
-        return self._tr(" SEARCH / GREEN / Search Owner only. Empty Enter returns to Agent.", " SEARCH / 緑 / Owner内だけを検索。空欄のEnterでAgentへ")
+        return self._ux("memo_input" if self.owner_mode == "memo" else "search_input")
 
     def _owner_text_changed(self, buffer):
         if self.practice:
@@ -448,11 +506,15 @@ class Cleanroom(InteractionUX):
 
     def _owner_items(self):
         from .cleanroom_owner import make_item
-        items = list((self.view or {}).get("owner_items", []))
+        items = list((self.owner_view or self.view or {}).get("owner_items", []))
+        if self.live_explicit or self.owner_mode == "search" and self.owner_input.text.strip():
+            for row in self.live_insights:
+                items.append(make_item("learning", row["id"] + " " + row["note"]["title"], row["note"],
+                                       run_id=row["run_id"], source_ref=row["source_ref"]))
         if self.personal_view and not self.readonly:
             from .personal_growth import reference_items
             items.extend(reference_items(self.personal_view))
-        recorded_request = ((self.view or {}).get("state") or {}).get("request", "")
+        recorded_request = ((self.owner_view or self.view or {}).get("state") or {}).get("request", "")
         if self.pending_request and recorded_request.split("\n\n[Owner-selected references:", 1)[0] != self.pending_request:
             item = make_item("request", self.pending_request.splitlines()[0],
                              {"request": self.pending_request, "status": "SESSION_ONLY_NOT_EXECUTION"},
@@ -470,10 +532,11 @@ class Cleanroom(InteractionUX):
                     for text in [self._ux("demo_owner").splitlines()[1], *self.practice_notes]]
         from .cleanroom_owner import search
         query = self.owner_input.text if self.owner_mode == "search" else ""
-        return search(self._owner_items(), query)[:60]
+        return search(self._owner_items(), query)
 
     def _cycle_inputs(self):
         self.input.buffer.cancel_completion()
+        self.owner_input.buffer.cancel_completion()
         if self.active_input == "agent":
             self.owner_mode = "memo"
             self.active_input = "owner"
@@ -492,6 +555,8 @@ class Cleanroom(InteractionUX):
         self._render()
 
     def _submit_owner(self, buffer):
+        if self._session_control(buffer.text.strip(), buffer, "owner"):
+            return True
         if self.practice:
             return self._practice_submit_owner(buffer)
         self.recall.record(self.owner_mode, buffer.text)
@@ -511,21 +576,22 @@ class Cleanroom(InteractionUX):
         if len(body) > 4000:
             self._log(self._tr("Please keep each memo within 4,000 characters. Your draft is retained.", "メモは4000文字以内に分けてください。入力内容は残しています。"), owner=True)
             return True
-        if self.note_intent is None or self.note_intent[1:] != (body, self.selected):
-            self.note_intent = (uuid.uuid4().hex, body, self.selected)
+        if self.note_intent is None or self.note_intent[1:] != (body, self.selected, self.console_sessions["room"]["id"]):
+            self.note_intent = (uuid.uuid4().hex, body, self.selected, self.console_sessions["room"]["id"])
         self.note_task = asyncio.create_task(self._save_owner_note(self.note_intent))
         return True
 
     async def _save_owner_note(self, intent):
         from .cleanroom_owner import save_note
-        key, body, run_id = intent
+        key, body, run_id, room_id = intent
         try:
-            await self.loop.run_in_executor(self.note_executor, lambda: save_note(self.root, body, key=key, run_id=run_id))
+            await self.loop.run_in_executor(self.note_executor, lambda: save_note(self.root, body, key=key, run_id=run_id, room_id=room_id))
             if self.owner_drafts["memo"].strip() == body:
                 self.owner_drafts["memo"] = ""
             if self.owner_mode == "memo" and self.owner_input.text.strip() == body:
                 self.owner_input.buffer.reset()
             self.note_intent = None
+            self.memo_offset = 0
             self._log(self._tr("Memo saved locally. It has not been sent to Agent.", "Ownerメモをローカル保存しました。Agentには送信していません。"), owner=True)
             await self._refresh()
         except (LedgerError, OSError, ValueError) as error:
@@ -617,12 +683,17 @@ class Cleanroom(InteractionUX):
         self.app.layout.focus(target)
         self.app.invalidate()
 
-    def _show_picker(self, title, choices, callback, descriptions=None, aliases=None):
-        self.choice_index = 1 if self.settings_active and choices else 0
+    def _show_picker(self, title, choices, callback, descriptions=None, aliases=None, *, inline=False):
+        self.choice_index = 1 if (self.settings_active or inline) and choices else 0
         self.picker = {"title": title, "choices": [(None, self._ux("back")), *choices], "callback": callback,
-                       "descriptions": descriptions or {}, "aliases": aliases or {}}
-        self.active_input = "agent" if self.settings_active else self.active_input
-        self.app.layout.focus(self.input if self.settings_active else self.menu_control)
+                       "descriptions": descriptions or {}, "aliases": aliases or {}, "inline": inline}
+        if not (inline and self.active_input == "owner"):
+            if self.settings_active or inline:
+                self.active_input = "agent"
+                self.focus_name = "split"
+                self.app.layout.focus(self.input)
+            else:
+                self.app.layout.focus(self.menu_control)
         self.app.invalidate()
 
     def _log(self, value, *, owner=False):
@@ -646,15 +717,19 @@ class Cleanroom(InteractionUX):
             question.answer.set_exception(OwnerCancelled())
             return
         self.question = question
-        if not self.settings_active:
-            self._transfer("agent_to_owner", "question-" + uuid.uuid4().hex, question.title, "人間への確認")
+        if question.preview is not None:
+            self.info_text = None
+            self.volatile_answer = None
+            self.conversation.change(question.preview, "WAITING")
+        elif not self.settings_active:
+            self._transfer("agent_to_owner", "question-" + uuid.uuid4().hex, question.title, self._ux("owner_question"))
         self.saved_draft = self.input.buffer.document
         self.input.buffer.reset()
-        self.phase = "waiting for your choice"
+        self.phase = self._ux("owner_question")
         if question.choices is not None:
             self._show_picker(question.title, question.choices, self._answer,
-                              descriptions=question.descriptions, aliases=question.aliases)
-        else:
+                              descriptions=question.descriptions, aliases=question.aliases, inline=question.inline)
+        elif not (question.inline and self.active_input == "owner"):
             self.active_input = "agent"
             self.focus_name = "split"
             self._focus_input()
@@ -684,7 +759,7 @@ class Cleanroom(InteractionUX):
 
     def ask(self, title, default=""):
         if title.endswith(("[y/N]", "[Y/n]")):
-            return self.choose(title, [("y", "Confirm / 確認した操作だけを進める")]) or "n"
+            return self.choose(title, [("y", ui_text("Confirm the displayed operation only", self._locale()))]) or "n"
         question = Question(title, Future(), default=default)
         self.loop.call_soon_threadsafe(self._present_question, question)
         value = question.answer.result()
@@ -697,14 +772,19 @@ class Cleanroom(InteractionUX):
 
     def _submit(self, buffer):
         value = buffer.text.strip()
+        if self._live_command(value, buffer):
+            return True
+        if self._session_control(value, buffer, "agent"):
+            return True
         if self.readonly:
             return True
         self.active_input = "agent"
         if self._handle_control(value, buffer):
             return True
         if self.practice and value:
+            self._tour_event("chat")
             buffer.reset()
-            self.info_text = self._ux("demo_answer") + "\n\n" + self._ux("demo_steps")
+            self.info_text = self._ux("demo_answer") + "\n\n" + self._ux("demo_steps") + "\n\n" + self._ux("workflow_guide")
             self._render()
             return True
         if self.question is not None:
@@ -716,7 +796,7 @@ class Cleanroom(InteractionUX):
             self._cycle_inputs()
             return True
         if self.busy:
-            self._log(self._tr("Work is running. Your next request remains a draft.", "現在の操作を実行中です。入力は下書きとして残しています。"), owner=True)
+            self._offer_work_input(value, buffer)
             return True
         buffer.reset()
         from .development_console import _notebook_intent
@@ -833,26 +913,8 @@ class Cleanroom(InteractionUX):
             elif value == "quit":
                 self.request_exit()
             elif value == "help":
-                self.growth_selection = None
-                self.preview = ("CLEANROOM / TWO VIEWS, ONE PROJECT\n\n"
-                                "一文で依頼し、送信範囲を確認してから作業を始めます。\n"
-                                "左下のAgent入力は人間からの依頼、右上のOwner入力はローカルのメモ・検索です。\n"
-                                "空欄のEnterで、Agent → 黄色のメモ → 緑の検索 → Agentへ巡回します。\n"
-                                "Owner項目名の先頭2文字で候補が出ます。矢印で選びTabで参照を差し込みます。\n"
-                                "通常の入力は開いている仕事の続きです。F2のNew pageで別の仕事を始めます。\n"
-                                "F2でメニュー、矢印とEnterで選択できます。\n"
-                                "F3で本文へ移り、矢印やPageUp/Downで読み、Escで入力に戻ります。\n"
-                                "Alt+0で分割、Alt+1..4で各ページへ移動できます。\n"
-                                "F4で今回の理解を開き、読む・自分の言葉・後で・参照・委譲を選べます。\n"
-                                "読むだけでは理解済みにしません。学習しなくても開発は続けられます。\n"
-                                "verantyx watch は別端末から同じ記録を読むだけです。\n"
-                                "閲覧による追加のモデル呼出しや承認はありません。\n\n"
-                                "記録された検査は現在のファイルの再検査ではありません。\n"
-                                "画面分割はOSの隔離機能ではありません。\n"
-                                "処理中に閉じる場合は、現在の処理の区切りを待ちます。\n"
-                                "強制終了時の外部処理結果はUNKNOWNになり得ます。自動再送しません。\n"
-                                "Escでこの説明を閉じます。")
-                self.focus_name = "owner"
+                self._show_help()
+                self.focus_name = "agent"
             elif value:
                 self.start_action(value)
             self._render()
@@ -877,41 +939,37 @@ class Cleanroom(InteractionUX):
 
     def _render(self):
         from prompt_toolkit.document import Document
+        from .conversation_view import owner_page
+        self.owner_completer.locale = self._locale()
         panes = (self.view or {}).get("panes", {})
         for name, area in self.areas.items():
             body = panes.get(name, self._tr("Opening the local records in read-only mode.", "読み取り専用で台帳を開いています。"))
             if name == "owner":
-                from .cleanroom_owner import render_owner
                 query = self.owner_input.text if self.owner_mode == "search" else ""
-                all_items = self._owner_items()
-                display_items = all_items if query else [
-                    item for item in all_items if not str(item.get("source_ref", "")).startswith("personal:")]
-                body = render_owner(self.view or {}, display_items, query,
-                                    locale=self.configuration.get("ui", {}).get("locale", "ja"))
-                if self.personal_view and not query and not self.readonly:
-                    from .personal_growth import panel
-                    lines = panel(self.personal_view)
-                    recent = {row["id"]: row for row in self.personal_view["records"]["lesson"]}
-                    for identity in self.personal_visible:
-                        lesson = recent.get(identity)
-                        if lesson and lesson.get("choice") == "OPEN":
-                            lines += ["", lesson["title"] + " / AIの候補", lesson["minimum_step"]]
-                    body = "\n".join(lines) + "\n\n" + body
-                if self.personal_error and not query:
-                    body += "\n本人用ノートの表示は後で回復できます。作業台帳とは独立しています。"
+                items = self._owner_items()
+                if not query:
+                    items = [item for item in items if not str(item.get("source_ref", "")).startswith("personal:")]
+                body = owner_page(self.owner_view or self.view or {}, items, query,
+                                  self.personal_view if not self.readonly else None, self.personal_visible,
+                                  self._pane_width("owner"),
+                                  self._locale(), self.owner_lexer)
                 growth_item = self._growth_item(selected_only=True)
                 if growth_item is not None and not query:
                     from .cleanroom_growth import lesson
                     body = lesson(growth_item)
+                    self.owner_lexer.rows = []
                 elif self.preview is not None and not query:
                     body = self.preview
+                    self.owner_lexer.rows = []
                 if self.practice:
                     body = self._practice_owner()
+                    self.owner_lexer.rows = []
             if name == "agent":
                 body = self._primary_answer()
             body = safe_text(body, multiline=True)
             if body != area.text:
-                position = min(area.buffer.cursor_position, len(body))
+                follow = name == "agent" and (not area.text or area.buffer.cursor_position >= len(area.text) - 1)
+                position = len(body) if follow else min(area.buffer.cursor_position, len(body))
                 area.buffer.set_document(Document(body, cursor_position=position), bypass_readonly=True)
         self.app.invalidate()
 
@@ -1017,8 +1075,10 @@ class Cleanroom(InteractionUX):
     def _model_progress(self, event):
         # Never expose hidden reasoning or treat a provider's self-check as proof.
         if event.get("kind") == "start":
+            self.model_waiting = True
             self._log("Model request: " + safe_text(event.get("model", "configured model")))
         elif event.get("kind") == "output":
+            self.model_waiting = False
             self._log("Response received: " + str(event.get("characters", 0)) + " characters / not evidence")
         elif event.get("kind") == "validated":
             self._log("Model response format checked / not an independent correctness check")
@@ -1029,6 +1089,7 @@ class Cleanroom(InteractionUX):
         if self.practice:
             self._log(self._ux("demo"))
             return
+        self._start_chat_work(action, kwargs)
         self.settings_active = action in SETTINGS_ACTIONS
         if self.settings_active:
             self.settings_lines.clear()
@@ -1042,13 +1103,17 @@ class Cleanroom(InteractionUX):
             self.pending_request = kwargs["request"]
         basis = deepcopy(self.view)
         self.work_task = asyncio.create_task(self._run_operation(action, basis, kwargs))
+        self._render()
 
     async def _run_operation(self, action, basis, kwargs):
         from .cleanroom_view import operation_message
-        follow_up_ui = None
+        follow_up_ui, result = None, None
+        inbox, ticket = self.run_input, self.active_ticket
         def invoke():
             from .progress import observe
-            with bind(self), observe(lambda stage: self.loop.call_soon_threadsafe(self._progress, stage),
+            from .work_input import bind as bind_work_input
+            from .interaction_text import language
+            with bind(self), bind_work_input(inbox), language(self.configuration), observe(lambda stage: self.loop.call_soon_threadsafe(self._progress, stage),
                                      lambda event: self.loop.call_soon_threadsafe(self._model_progress, dict(event))):
                 return self._operation(action, basis, **kwargs)
         try:
@@ -1080,6 +1145,7 @@ class Cleanroom(InteractionUX):
                     self.phase = operation_message(status)
                 if result.get("reason"):
                     self._log(operation_message(result["reason"]), owner=True)
+                await self._refresh()
         except OwnerCancelled:
             self.phase = "paused"
             self._log("今回の未実行操作を中止しました。既に記録された結果は取り消しません。", owner=True)
@@ -1093,6 +1159,7 @@ class Cleanroom(InteractionUX):
             self.phase = "needs attention"
             self._log("操作を中断しました: " + type(error).__name__ + " / 成功として扱わず、自動再送もしません。", owner=True)
         finally:
+            self._finish_chat_work(action, result, inbox, ticket)
             self.busy = False
             self.started = None
             if action in SETTINGS_ACTIONS:
@@ -1108,12 +1175,22 @@ class Cleanroom(InteractionUX):
                 self.app.exit(result=0)
             elif follow_up_ui == "open_growth":
                 self.open_growth()
+            elif not self._continue_live_questions():
+                self._start_next_queued()
 
     def _operation(self, action, basis, **kwargs):
         from . import development_console as console
         from .development import run_work
         from .constitution import prepare
         from .model_settings import activate_codex, clear, describe
+        from .work_pulse import answer as work_pulse_answer
+        if action == "insight-question":
+            from .development_console import _mutate
+            result = _mutate(self.root, self.configuration, work_pulse_answer, **kwargs)
+            self.loop.call_soon_threadsafe(self._question_finished, result)
+            return None
+        if action == "session-control":
+            return self._session_operation(**kwargs)
         if action == "inline-settings":
             from .settings_console import configure, display
             if kwargs.get("section") == "show":
@@ -1367,7 +1444,9 @@ class Cleanroom(InteractionUX):
             self.choose_or_stop("表示した許可済み計画を実行します。対象ブランチと候補を確認してください。", "Apply plan / 採用を実行")
             return _mutate(self.root, self.configuration, adoption.adopt, basis["run_id"], identity, precedent, uuid.uuid4().hex)
 
-    def request_exit(self):
+    def request_exit(self, *, discard_queue=False):
+        if not discard_queue and self._confirm_queue_exit():
+            return
         if self.busy:
             self.exit_after_work = True
             if self.question is not None:
@@ -1387,8 +1466,9 @@ class Cleanroom(InteractionUX):
                     self.cursor_error = None
                 except OSError:
                     self.cursor_error = self._tr("Status sharing with other terminals is unavailable. Ledger storage is separate.", "別端末向けの状態通知が停止しています。台帳の保存状態とは別です。")
-            view = await self.loop.run_in_executor(self.read_executor, self.reader.read, self.selected, self.readonly)
+            view = await self._read_session_views()
             self.view, self.read_error = view, None
+            await self._refresh_live_learning()
             if not self.readonly:
                 from .personal_growth import ui_state
                 try:
@@ -1408,8 +1488,6 @@ class Cleanroom(InteractionUX):
                 self.announced_growth = identity
                 if focus:
                     self._transfer("agent_to_owner", "learning:" + focus["id"], focus["concept"], self._tr("An optional insight", "持ち帰る理解"))
-            if not self.readonly and self.selected is None:
-                self.selected = view["run_id"]
             if self.readonly:
                 cursor = view.get("cursor") or {}
                 self.phase = cursor.get("phase", "recorded") if cursor.get("live") else "Owner offline / historical ledger"
@@ -1426,6 +1504,7 @@ class Cleanroom(InteractionUX):
     async def _poll(self):
         while not self.closed:
             await self._refresh()
+            self._start_next_queued()
             await asyncio.sleep(1)
 
     async def run(self):

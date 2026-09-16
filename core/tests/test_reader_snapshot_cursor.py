@@ -10,7 +10,7 @@ import uuid
 
 from verantyx import config, agent_runtime
 from verantyx.agent_models import identity
-from verantyx.agent_schema import REFLECTION_REQUEST
+from verantyx.agent_schema import REFLECTION_SKILLS_REQUEST as REFLECTION_REQUEST
 from verantyx.cleanroom_view import Reader
 from verantyx.errors import LedgerError
 from verantyx.storage.sqlite import EventStore, store_path
@@ -19,6 +19,9 @@ from test_work_ownership_planes import work, tool, reflection
 
 class ReaderSnapshotCursor(TestCase):
     def setUp(self):
+        harness_call = mock.patch("verantyx.work_harness.invoke", side_effect=lambda *args, **kwargs: agent_runtime.invoke(*args, **kwargs))
+        harness_call.start()
+        self.addCleanup(harness_call.stop)
         self.temp = TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)

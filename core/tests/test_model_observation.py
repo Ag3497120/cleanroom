@@ -332,7 +332,7 @@ class ModelObservationTests(Fixture):
             payload({**chosen, "context_window": 65536}, large)
         self.assertEqual(caught.exception.details["limit"], 65536)
         self.assertEqual(caught.exception.code, "SHARED_CONTEXT_LIMIT")
-        for invalid in ({"context_window": 131073}, {"context_window": True}, {"timeout": 601},
+        for invalid in ({"context_window": 2000001}, {"context_window": True}, {"timeout": 601},
                         {"context_window": 131072, "provider": "openai"}):
             with self.assertRaises(LedgerError):
                 validate_config({**self.configuration, **invalid})

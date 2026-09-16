@@ -22,6 +22,8 @@ def _mutate(root, configuration, operation, *args, **kwargs):
 
 
 def _ask(prompt, default=""):
+    from .console_copy import ui_text
+    prompt = ui_text(prompt)
     if owner_io.get() is not None:
         return owner_io.get().ask(prompt, default)
     value = input(prompt + (" [" + default + "]" if default else "") + "> ").strip()
@@ -44,14 +46,15 @@ def _pick(title, rows, label):
         return None
     session = owner_io.get()
     lang = session.configuration["ui"]["locale"] if session is not None else locale()
-    choices = [(index, label(row)) for index, row in enumerate(rows)]
+    from .console_copy import ui_text
+    choices = [(index, ui_text(label(row), lang)) for index, row in enumerate(rows)]
     descriptions = {index: description(title, row, label(row), lang) for index, row in enumerate(rows)}
     if session is not None:
-        selected = session.choose(title, choices, descriptions=descriptions,
+        selected = session.choose(ui_text(title, lang), choices, descriptions=descriptions,
                                   aliases={str(row).casefold(): index for index, row in enumerate(rows)
                                            if isinstance(row, (str, int, bool))})
     else:
-        selected = choose(title, choices, descriptions, lang)
+        selected = choose(ui_text(title, lang), choices, descriptions, lang)
     return None if selected is None else rows[selected]
 
 def _conditions(default_target=""):

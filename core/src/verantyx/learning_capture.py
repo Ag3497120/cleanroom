@@ -36,7 +36,7 @@ def note_schema():
     entry = {"type": "string", "maxLength": 3000}
     return obj({
         "title": {"type": "string", "minLength": 1, "maxLength": 240},
-        "target_kind": {"enum": ["SKILL", "TECHNOLOGY", "BOTH"]},
+        "target_kind": {"type": "string", "enum": ["SKILL", "TECHNOLOGY", "BOTH"]},
         "technology_tags": array({"type": "string", "minLength": 1, "maxLength": 160}, 8),
         "explanation": text, "prerequisites": array(entry, 10),
         "expanded_steps": array(entry, 16), "alternatives": array(entry, 8),
@@ -149,7 +149,7 @@ def capture_safe(configuration, state, *, personal_context=None):
                 profile._put(db, row)
                 added += 1
         from .notebook_bridge import auto_sync
-        vault = auto_sync()
+        vault = auto_sync() if added and state.get("work_result") else {"status": "DEFERRED_UNTIL_WORK_BOUNDARY"}
         return {"status": "RECORDED", "added": added, "vault": vault,
                 "learning_notes": note_status(events), "work_result_unchanged": True}
     except Exception as error:
@@ -157,19 +157,58 @@ def capture_safe(configuration, state, *, personal_context=None):
                 "project_events_retained": True, "work_result_unchanged": True}
 
 
-def traces():
+def iter_traces(run_id=None, *, newest=False, limit=None):
+    """Stream archive rows, optionally bounded; never build an all-history list for the UI."""
     with profile.connection() as db:
         if db is None:
-            return []
-        return [json.loads(row[0]) for row in db.execute(
-            "SELECT document FROM records WHERE kind='learning_trace' ORDER BY updated,id")]
+            return
+        args, clause = [], "kind='learning_trace'"
+        if run_id is not None:
+            clause += " AND json_extract(document,'$.run_id')=?"
+            args.append(run_id)
+        order = "DESC" if newest else "ASC"
+        sql = "SELECT document FROM records WHERE " + clause + " ORDER BY updated " + order + ",id " + order
+        if limit is not None:
+            sql += " LIMIT ?"
+            args.append(max(1, int(limit)))
+        for row in db.execute(sql, args):
+            yield json.loads(row[0])
+
+
+def traces(run_id=None, limit=None):
+    # Full export callers remain lossless. Interactive callers request a bounded page.
+    return list(iter_traces(run_id, limit=limit))
+
+
+def known_sources(refs):
+    """Resolve only cited IDs using the records primary key, not every past event."""
+    refs = set(refs)
+    result = set()
+    with profile.connection() as db:
+        if db is None:
+            return result
+        for ref in refs:
+            identity = "learning-trace-" + digest(ref)[:40]
+            row = db.execute("SELECT document FROM records WHERE id=? AND kind='learning_trace'", (identity,)).fetchone()
+            if row and json.loads(row[0]).get("event", {}).get("source_ref") == ref:
+                result.add(ref)
+    return result
+
+
+def event_sources(event):
+    raw = event.get("payload", {}).get("proposal", {}).get("learning_notes", [])
+    refs = {event["source_ref"]}
+    if isinstance(raw, list):
+        for note in raw[:4]:
+            if isinstance(note, dict) and isinstance(note.get("source_event_ids"), list):
+                refs.update(ref for ref in note["source_event_ids"][:16] if isinstance(ref, str))
+    return known_sources(refs)
 
 
 def topics():
-    rows = traces()
-    refs = {row["event"]["source_ref"] for row in rows}
     by_name = {}
-    for row in rows:
+    for row in iter_traces():
+        refs = event_sources(row["event"])
         notes, _ = notes_from_event(row["event"], refs)
         pending = pending_notes_from_event(row["event"], refs)
         for note, status in [(note, "notes") for note in notes] + [(item["note"], "pending") for item in pending]:

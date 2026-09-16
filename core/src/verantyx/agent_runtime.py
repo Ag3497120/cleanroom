@@ -75,6 +75,10 @@ No test receipt means NOT VERIFIED. Classification, education and asset promotio
 Return only the work proposal schema; do not embed reflection classifications in place of the answer."""
 from .learning_capture import CONTRACT as LEARNING_CAPTURE_CONTRACT
 WORK_CONTRACT += "\n\n" + LEARNING_CAPTURE_CONTRACT
+WORK_CONTRACT += """\nowner_instructions contains additional human requests recorded during this work,
+in chronological order, with their own source references. Apply the latest request at
+the next step, but never treat it as new file access, shell permission, adoption, or
+proof of understanding. The original request and earlier results remain history."""
 REFLECTION_CONTRACT = """Organize the recorded work for its human project owner.
 Work completion is independent of this reflection. You are a selectable Reflection AI.
 Use the actual request, human replies, file reads, candidate writes, tool receipts, failures and
@@ -124,6 +128,8 @@ def _record(root, configuration, run_id, kind, payload, key, *, personal_context
         state["work_trace_events"] = deepcopy(store.events(run_id))
     from .learning_capture import capture_safe as capture_learning
     state["learning_capture"] = capture_learning(configuration, state, personal_context=personal_context)
+    from .work_pulse import capture as capture_pulse
+    capture_pulse(root, configuration, state)
     return state
 
 
@@ -265,6 +271,18 @@ def _tool(root, run_id, turn, request, scope, artifacts, assets=(), *, human_req
             sizes[path] = len(raw) if raw is not None else len(request["text"].encode())
             if len(sizes) > 32 or sum(sizes.values()) > MAX_BUNDLE_BYTES:
                 raise LedgerError("DOCUMENT_LIMIT")
+            from .change_review import prepare, review, unchanged
+            candidate_bytes = raw if raw is not None else request["text"].encode("utf-8")
+            preview = prepare(root, run_id, turn, request, scope, artifacts, candidate_bytes)
+            result["change_review"] = review(preview)
+            if result["change_review"]["mode"] == "DENIED":
+                raise LedgerError("CHANGE_DECLINED")
+            # Approval is for this exact version. Recheck authority and the base
+            # after the potentially long wait for the owner.
+            require_current_approval_valid()
+            if CURRENT.get() is not None:
+                CURRENT.get().unchanged()
+            unchanged(root, preview, artifacts)
             result["artifact"] = _candidate(root, run_id, turn, request, raw=raw)
             result["text"] = "Host candidate saved. This tool did not write source files or execute tests. Other process effects are not audited."
         else:
@@ -290,11 +308,13 @@ def _context(root, configuration, previous=None):
     ordered = sorted(streams.values(), key=lambda rows: rows[-1]["recorded_at"], reverse=True)
     if previous:
         ordered.sort(key=lambda rows: rows[0]["stream_id"] != previous)
+    from .session_store import runs as session_runs
+    allowed_history = set(session_runs(root))
     owner_states = []
     for rows in ordered:
         state = replay(rows)
         owner_states.append(state)
-        if not state.get("work_result"):
+        if not state.get("work_result") or state["run_id"] not in allowed_history:
             continue
         row = {"run_id": state["run_id"], "request": state["request"],
                "result_source_ref": state["work_result"]["source_ref"],
@@ -348,6 +368,8 @@ def run_work(root, configuration, *, request, key=None, include=(), continue_fro
     # No request keywords, constitution.assess/prepare, learning catalogue,
     # intent-equivalence test, or reviewer-model gate is used in this path.
     root = Path(root).resolve()
+    from .work_input import CURRENT as current_input
+    inbox = current_input.get()
     key = key or str(uuid.uuid4())
     if not isinstance(request, str) or not request.strip() or len(request) > 16000:
         raise LedgerError("ARGUMENTS")
@@ -393,6 +415,10 @@ def run_work(root, configuration, *, request, key=None, include=(), continue_fro
         record_run(root, configuration, request=request, run_id=run_id, observe_paths=observed_scope,
                    key=run_id + "-open")
         state = _state(root, configuration, run_id)
+        from .session_store import bind_run as bind_session_run
+        bind_session_run(root, run_id)
+        if inbox is not None:
+            inbox.started(run_id)
         if state.get("work_result"):
             # Retrying a work key never repeats completed work or reflection.
             return _result(state)
@@ -422,6 +448,8 @@ def run_work(root, configuration, *, request, key=None, include=(), continue_fro
         status, reason = "PARTIAL", "TURN_LIMIT"
         from .personal_growth import context as personal_context
         while True:
+            from .work_pulse import service as answer_insight
+            answer_insight(root, configuration, state, inbox, adapter=None if harness.external else adapter, timeout=timeout)
             turns = state["work_turns"]
             # Resume an already-recorded model turn without paying/calling again.
             pending = turns[-1] if turns and any(
@@ -429,7 +457,20 @@ def run_work(root, configuration, *, request, key=None, include=(), continue_fro
                         and receipt["request"]["id"] == tool["id"] for receipt in state["work_tools"])
                 for tool in turns[-1]["proposal"]["tool_requests"]) else None
             if pending is None:
-                if turns and turns[-1]["proposal"]["status"] in ("COMPLETE", "NEEDS_OWNER"):
+                # Additional input is consumed only between complete host steps.
+                # It is recorded before use and does not expand approved scope.
+                if inbox is not None and len(turns) < max_turns:
+                    while (instruction := inbox.peek()) is not None:
+                        state = _record(root, configuration, run_id, "WorkInstructionRecorded",
+                                        {**instruction, "before_turn": len(turns),
+                                         "authority": "HUMAN_INSTRUCTION_NOT_PERMISSION"},
+                                        run_id + "-instruction-" + instruction["id"])
+                        inbox.recorded(instruction["id"])
+                waiting_instruction = any(row["before_turn"] == len(turns)
+                                          for row in state.get("work_instructions", []))
+                if turns and turns[-1]["proposal"]["status"] in ("COMPLETE", "NEEDS_OWNER") and not waiting_instruction:
+                    if inbox is not None and len(turns) < max_turns and not inbox.seal_if_empty():
+                        continue
                     proposal = turns[-1]["proposal"]
                     status = "WAITING_OWNER" if proposal["status"] == "NEEDS_OWNER" else (
                         "PARTIAL" if any(row["status"] == "REFUSED" for row in state["work_tools"]) else "SUCCEEDED")
@@ -444,6 +485,7 @@ def run_work(root, configuration, *, request, key=None, include=(), continue_fro
                 value = {"format": WORK_REQUEST, "request": request, "run_id": run_id,
                          "response_locale": configuration["ui"]["locale"],
                          "generation_id": run_id + "-model-" + str(index),
+                         "owner_instructions": deepcopy(state.get("work_instructions", [])),
                          "project_context": {key: value for key, value in state["work_session"]["context"].items()
                                              if key != "attachments"},
                          "attachments": state["work_session"]["context"].get("attachments", []),
@@ -456,17 +498,20 @@ def run_work(root, configuration, *, request, key=None, include=(), continue_fro
                 value["personal_context"] = personal_context()
                 from .work_tools import current as current_tools
                 value["tool_capabilities"] = current_tools().describe()
+                from .work_pulse import CONTRACT as PULSE_CONTRACT, interrupt_context
+                value["output_contract"] += "\n\n" + PULSE_CONTRACT
+                value["work_interruptions"] = interrupt_context(root, run_id)
                 value["capture_learning"] = True
                 value["learning_sources"] = [row["source_ref"] for row in
                     trace_from_events(state.get("work_trace_events", []))["events"]]
                 from .model_roles import load as model_roles
                 value["model_roles"] = model_roles(root)
-                from .context_handoff import compact
-                value, compact_metadata = compact(value)
+                from .session_context import prepare as prepare_context
+                value, compact_metadata = prepare_context(root, configuration, value)
                 value["output_schema"] = schema(value)
                 try:
-                    if len(canonical(value).encode()) > 450000:
-                        raise LedgerError("WORK_CONTEXT_LIMIT")
+                    if compact_metadata.get("over_budget") or len(canonical(value).encode()) > 450000:
+                        raise LedgerError("WORK_CONTEXT_LIMIT", {"next": "verantyx compact / verantyx setup context"})
                     call = harness.propose(root, value, key=run_id + "-model-" + str(index), timeout=timeout)
                     proposal = validate_output(value, call["document"])
                     model = call["model"]
@@ -483,6 +528,7 @@ def run_work(root, configuration, *, request, key=None, include=(), continue_fro
                     reason = _failure_reason(error, "MODEL_CALL_FAILED")
                     break
             for tool in pending["proposal"]["tool_requests"]:
+                answer_insight(root, configuration, state, inbox, adapter=None if harness.external else adapter, timeout=timeout)
                 if any(row["turn_index"] == pending["index"] and row["request"]["id"] == tool["id"]
                        for row in state["work_tools"]):
                     continue

@@ -10,9 +10,10 @@ from .agent_models import reflection_setting
 from .cleanroom_io import console_print as print
 from .errors import LedgerError
 from .model_settings import describe
+from .console_copy import ui_text
 
 
-SECTIONS = ("project", "models", "accounts", "codex", "claude", "learning", "language", "workspace", "boundary", "profile", "pace", "skills", "harness", "sandbox", "notebook", "roles")
+SECTIONS = ("project", "models", "accounts", "codex", "claude", "learning", "language", "workspace", "boundary", "profile", "pace", "skills", "harness", "sandbox", "notebook", "roles", "context", "permissions")
 
 
 def snapshot(root, configuration, section="menu"):
@@ -76,7 +77,7 @@ def _save_preferences(root, configuration, section, fields):
 
 def _confirm_save(root, configuration, section, fields):
     from . import development_console as ui
-    print("\nProposed settings")
+    print("\n" + ui_text("Proposed settings"))
     for key, value in fields.items():
         print("  " + key + ": " + terminal_text(value))
     choice = ui._pick("Save these project settings?", [False, True],
@@ -84,11 +85,14 @@ def _confirm_save(root, configuration, section, fields):
     if choice is not True:
         return
     result = ui._mutate(root, configuration, _save_preferences, section, fields)
-    print("Saved: " + terminal_text(result["config_path"]))
+    print(ui_text("Saved: {path}", path=terminal_text(result["config_path"])))
 
 
 def _section(root, configuration, section):
     from . import development_console as ui
+    if section in ("context", "permissions"):
+        from .model_preferences import context_menu, permission_menu
+        return (context_menu if section == "context" else permission_menu)(root, configuration)
     if section == "notebook":
         from .bridge_console import menu as notebook_menu
         return notebook_menu(root, configuration)
@@ -111,14 +115,14 @@ def _section(root, configuration, section):
         from .agent_console import configure
         return configure(root, configuration)
     if section == "project":
-        print("\nPROJECT / Enter keeps the current value. :clear removes the purpose.")
+        print("\n" + ui_text("PROJECT / Enter keeps the current value. :clear removes the purpose."))
         name = ui._ask("Project name", configuration["project"]["name"])
         purpose = ui._ask("Project purpose", configuration["project"]["purpose"])
         _confirm_save(root, configuration, "project",
                       {"name": name, "purpose": "" if purpose == ":clear" else purpose})
     elif section == "learning":
-        print("\nLEARNING / Display preferences only; this does not mark understanding as achieved.")
-        print("To stop model-based organization, choose Reflection: off in Models & organization.")
+        print("\n" + ui_text("LEARNING / Display preferences only; this does not mark understanding as achieved."))
+        print(ui_text("To stop model-based organization, choose Reflection: off in Models & organization."))
         mode = ui._pick("When should learning suggestions appear?", ["digest", "manual", "off"],
                         lambda value: {"digest": "Briefly after work", "manual": "Only when I open them",
                                        "off": "Do not show automatic suggestions"}[value])
@@ -133,7 +137,7 @@ def _section(root, configuration, section):
                             lambda value: value + " / " + LANGUAGES[value])
         if selected is not None:
             _confirm_save(root, configuration, "ui", {"locale": selected})
-            print("Restart the notebook to apply the display language. Settings labels remain English-based.")
+            print(ui_text("Display and guide language changed. Recorded conversations remain in their original language."))
     elif section == "workspace":
         print("\nWORKSPACE / " + terminal_text(root))
         print("Settings and work records belong to this project, not every folder on this Mac.")
@@ -164,10 +168,13 @@ def _configure(root, configuration, section="menu"):
     if section != "menu":
         return _section(root, configuration, section)
     labels = {
+        "language": "Language / notebook display",
         "accounts": "Accounts / connect ChatGPT or Claude subscription",
         "notebook": "Notebook / Obsidian, imported skills, original learning records",
         "roles": "Parent / child models",
         "models": "Models & organization / Work AI and Reflection AI",
+        "context": "Context & compaction",
+        "permissions": "Permissions / candidate edits",
         "harness": "Work harness / built-in or trusted external proposal adapter",
         "sandbox": "Sandbox backend / optional OSS launcher for external Work",
         "skills": "My skills / AI procedures and my personal board",
@@ -175,26 +182,30 @@ def _configure(root, configuration, section="menu"):
         "profile": "My profile / personal experience, journal and portfolio",
         "pace": "My pace / person-wide learning, sharing and quiet mode",
         "learning": "Project learning / legacy display preferences",
-        "language": "Language / notebook display",
         "workspace": "Workspace / project location and local data",
         "boundary": "Authority / permissions and boundaries",
         "show": "View saved settings / no model call",
     }
     while True:
         print("\nCLEANROOM / SETTINGS")
-        print("Keep your project understanding and decisions here. Let AI carry the implementation work.")
-        print("Project: " + terminal_text(configuration["project"]["name"]))
+        print(ui_text("Keep your project understanding and decisions here. Let AI carry the implementation work."))
+        print(ui_text("Project: {name}", name=terminal_text(configuration["project"]["name"])))
         action = ui._pick("Choose a setting", list(labels), labels.get)
         if action is None:
             return
         try:
             _section(root, configuration, action)
         except (config.ConfigError, LedgerError, OSError, ValueError) as error:
-            print("This change was not completed: " + terminal_text(getattr(error, "code", type(error).__name__)))
-            print("Previously saved settings remain available. No AI work was started.")
+            print(ui_text("This change was not completed: {reason}", reason=terminal_text(getattr(error, "code", type(error).__name__))))
+            print(ui_text("Previously saved settings remain available. No AI work was started."))
 
 
 def run(root, configuration, expected, locale, *, section="menu", show=False, as_json=False):
+    if section in ("context", "permissions") and (show or as_json):
+        from .session_store import preferences, edit_grant
+        value = preferences(root) if section == "context" else edit_grant(root)
+        print(json.dumps(value, ensure_ascii=False, indent=2))
+        return 0
     if section in ("notebook", "roles") and (show or as_json):
         if section == "notebook":
             from .notebook_bridge import settings
@@ -248,14 +259,17 @@ def run(root, configuration, expected, locale, *, section="menu", show=False, as
     if configuration is None:
         config.save(root, config.defaults(root, locale), expected)
         configuration, _ = config.load(root)
-        print("Initialized project-local settings: " + terminal_text(config.config_path(root)))
+        print(ui_text("Initialized project-local settings: {path}", lang=locale, path=terminal_text(config.config_path(root))))
     try:
         configure(root, configuration, section)
         if section == "menu":
             from .onboarding_walkthrough import offer
-            offer(root, configuration)
+            if offer(root, configuration):
+                from .cleanroom_tui import interact
+                interact(root, configuration)
+                return 0
     except (EOFError, KeyboardInterrupt):
-        print("\nSettings closed. Earlier saved changes are retained.")
+        print("\n" + ui_text("Settings closed. Earlier saved changes are retained.", lang=configuration["ui"]["locale"]))
         return 130
-    print("\nSettings closed. Run verantyx to open the notebook.")
+    print("\n" + ui_text("Settings closed. Run verantyx to open the notebook.", lang=configuration["ui"]["locale"]))
     return 0

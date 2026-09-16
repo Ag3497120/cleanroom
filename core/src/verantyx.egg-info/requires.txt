@@ -3,6 +3,8 @@ cryptography<47,>=41
 psutil<8,>=5.9
 rich<15,>=13.9
 prompt-toolkit<4,>=3.0.48
+Pillow<13,>=11
+pypdfium2<6,>=5
 
 [mcp]
 mcp<2,>=1.12

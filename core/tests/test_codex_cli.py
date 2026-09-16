@@ -33,6 +33,8 @@ class CodexCliTests(unittest.TestCase):
         self.root = Path(self.temporary.name)
         self.created = commands_codex.create_configs(self.root / "session")
         self.configs = {role: codex_cli.load_config(path) for role, path in self.created["adapters"].items()}
+        for value in self.configs.values():
+            value.update(model="gpt-5.3-codex-spark", reasoning_effort="low")
         self.cfg = self.configs["implementation"]
         # Every test fails closed if it accidentally reaches the real launcher.
         self.guard = mock.patch("verantyx.codex_cli._invoke", side_effect=AssertionError("real model forbidden"))
@@ -135,12 +137,13 @@ class CodexCliTests(unittest.TestCase):
         self.assertEqual(self.usage()["calls_reserved"], 1)
 
     def test_configuration_cannot_replace_model_auth_and_legacy_cap_is_not_an_execution_limit(self):
-        for field, replacement in (("model", "another-model"), ("provider", "openai"),
-                                   ("reasoning_effort", "high"), ("role", "unbounded")):
+        for field, replacement in (("provider", "openai"), ("role", "unbounded"),
+                                   ("reasoning_effort", "invalid"), ("model", "../invalid")):
             with self.assertRaises(LedgerError):
                 codex_cli.validate_config({**self.cfg, field: replacement})
         with self.assertRaises(LedgerError):
             codex_cli.validate_config({**self.cfg, "key_env": "OPENAI_API_KEY"})
+        self.assertEqual(codex_cli.validate_config({**self.cfg, "model": "another-model", "reasoning_effort": "high"})["model"], "another-model")
         self.launcher.side_effect = self.successful
         self.assertEqual(codex_cli.request({**self.cfg, "max_calls": 9}, REQUEST), DOCUMENT)
         self.assertEqual(self.usage()["calls_reserved"], 1)
@@ -309,8 +312,9 @@ else:
                                  text=True, env=command["env"], cwd=self.root, timeout=10)
         self.assertEqual(process.returncode, 2)
         self.assertEqual(process.stdout, "")
-        self.assertEqual(json.loads(process.stderr), {"code": "BRIDGE_PROCESS_FAILED",
-                         "details": {"reason": "CODEX_CLI_ARGUMENTS", "returncode": 2}})
+        from verantyx.model_observation import parse
+        self.assertEqual(parse(process.stderr.strip().encode()), {"kind": "error", "code": "BRIDGE_PROCESS_FAILED",
+                         "details": {"reason": "CODEX_CLI_ARGUMENTS"}})
         self.assertNotIn("PRIVATE_STDERR_MARKER", process.stderr)
         receipt = self.usage()["calls"][0]
         self.assertEqual(receipt["status"], "FAILED")

@@ -4,6 +4,9 @@ import contextlib
 import io
 import tempfile
 import unittest
+from unittest import mock
+import json
+import sys
 from pathlib import Path
 
 from verantyx import config
@@ -56,16 +59,26 @@ class OwnershipMvpTests(unittest.TestCase):
             self.assertEqual(main(["--project", str(self.root), "ownership", "ownership"]), 0)
         self.assertIn("PROJECT OWNERSHIP", output.getvalue())
 
-    def test_high_impact_develop_is_stopped_before_any_model_or_adapter_is_read(self):
+    def test_request_words_do_not_reintroduce_a_semantic_gate(self):
         set_constitution(self.root, self.cfg, purpose=self.cfg["project"]["purpose"],
                          human_owned_decisions=["公開範囲"])
-        result = run_work(self.root, self.cfg, request="公開するCLIの出力を変更する", key="gate")
-        self.assertFalse(result["ok"])
-        self.assertEqual(result["status"], "DECISION_REQUIRED")
-        self.assertEqual(result["model_calls"], 0)
-        self.assertEqual(result["task_gate"]["status"], "ASK_ONE_DECISION")
-        self.assertEqual(len(gaps(self.root)), 1)
-        self.assertEqual(gaps(self.root)[0]["status"], "OPEN")
+        adapter = self.root / "fixture.json"
+        adapter.write_text(json.dumps({"argv": [sys.executable, "-c", "raise SystemExit(99)"]}))
+        from verantyx.agent_models import identity
+        proposal = {"format": "verantyx.work-proposal.v1", "status": "COMPLETE",
+                    "answer": "Investigated the requested change; no publication performed.",
+                    "tool_requests": [], "owner_question": "", "assumptions": []}
+        with mock.patch("verantyx.work_harness.invoke", return_value={
+                    "document": proposal, "model": identity(adapter)}) as work_call, \
+                mock.patch("verantyx.agent_runtime.invoke", side_effect=RuntimeError("Reflection unavailable")), \
+                mock.patch("verantyx.constitution.prepare", side_effect=AssertionError("Legacy keyword gate")):
+            result = run_work(self.root, self.cfg, request="公開するCLIの出力を変更する",
+                              work_adapter=str(adapter), key="no-keyword-gate")
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["work"]["status"], "SUCCEEDED")
+        self.assertEqual(result["work"]["tool_counts"]["succeeded"], 0)
+        work_call.assert_called_once()
+        self.assertEqual(gaps(self.root), [])
 
     def test_constitution_commands_are_readable_from_the_actual_cli(self):
         output = io.StringIO()

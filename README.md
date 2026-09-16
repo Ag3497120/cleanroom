@@ -6,16 +6,16 @@
 
 <p align="center">A coding workspace. A learning notebook. Your own growing skills.</p>
 
-<p align="center"><a href="https://verantyx.ai/#play">Try in your browser</a> · <a href="#install">Install</a> · <a href="#first-minute">First-minute tutorial</a> · <a href="docs/two-pane-interaction.md">Controls</a> · <a href="LICENSE">MIT</a></p>
+<p align="center"><a href="https://verantyx.ai/#play">Try in your browser</a> · <a href="#install">Install</a> · <a href="#first-minute">First-minute tutorial</a> · <a href="#while-work-continues">While work continues</a> · <a href="docs/two-pane-interaction.md">Controls</a> · <a href="LICENSE">MIT</a></p>
 
 <p align="center"><a href="#en">English</a> · <a href="#ja">日本語</a> · <a href="#zh-Hans">简体中文</a> · <a href="#ko">한국어</a> · <a href="#es">Español</a></p>
 
-![Cleanroom CLI: ask for work, keep an insight, save a memo and reuse a reference](public/cleanroom/cli-demo.gif)
+![English Cleanroom CLI: a continuous conversation, an optional L-number explanation, a private memo, and an inline change review](public/cleanroom/cli-demo.gif)
 
 <p align="center"><strong>Ask normally. Keep what matters. Learn at your pace.</strong></p>
 
-Recorded CLI walkthrough with scripted work data. It may predate the latest controls;
-use the built-in tutorial for the current interaction. This is not a live-model benchmark.
+English walkthrough recorded from the real split CLI with isolated, scripted work data.
+It shows the interaction, not a live-model benchmark, a test pass or proof of learning.
 [Watch with controls](public/cleanroom/cli-demo.mp4) · [Static view](public/cleanroom/cli-demo-poster.png) · [Recording recipe](docs/DEMO_RECORDING.md)
 
 ---
@@ -75,6 +75,23 @@ Completion and settings choices take priority over history. Each input has its o
 **Talk without adding to your notebook:** `//your question` opens temporary, tool-free chat. Cleanroom does not save it as work, journal entries, skills or learning memory; the model provider's retention policy is separate.
 
 [Split-pane guide and privacy limits](docs/two-pane-interaction.md#english) · [All commands](#commands)
+
+<a id="while-work-continues"></a>
+
+### While work continues
+
+You do not have to wait for the project to be finished.
+
+- **Ask and keep going.** The Agent pane is a continuous conversation: shaded requests, plain answers, and a separate activity area. A spinner and a gentle input pulse show work in progress.
+- **Keep one useful explanation.** At safe work boundaries, eligible implementation-time notes can appear in Owner, within your chosen suggestion budget. Send an ID such as `L-000001` to ask about that note without replacing the implementation task. A long-running tool finishes its current call first.
+- **Treat time as an estimate.** When the AI supplies one, implementation and testing have separate ranges. Questions add measured time; the next work turn can revise the estimate. Missing or outdated estimates remain labelled, not invented.
+- **Choose the pace.** Keep a memo, refer back, delegate, or leave it for next time. Asking, skipping, importing a skill or granting permission never certifies understanding.
+
+`/verantyx new` in Agent starts a new Agent conversation, not a new Owner notebook. Owner Cleanrooms have their own names and confirmation steps. Candidate edits offer **once / this workspace / permanent / deny**; these choices are not permission to publish or adopt into the main project.
+
+[Live learning, sessions, permissions and storage](docs/live-learning-and-sessions.md) · [Conversation and change review](docs/conversation-and-change-review.md)
+
+At 120 columns × 28 rows, the CLI uses two equal-width panes; at 80 × 48 it can stack them. Smaller windows show the active pane without blocking work. Empty Enter still cycles Agent → Memo → Search. Terminal font size belongs to your terminal application; the browser demo has its own text-size controls.
 
 ### What makes it different
 
@@ -177,6 +194,21 @@ verantyx
 
 [二分割画面の操作とプライバシー](docs/two-pane-interaction.md#日本語) · [コマンド一覧](#commands)
 
+### 完成を待たず、作りながら理解する
+
+プロジェクトの「完成」まで、理解の表示を待つ必要はありません。
+
+- **普通に依頼して、そのまま続ける。** Agentには背景色付きの依頼、背景色なしの回答が会話として続きます。システム通知は別欄にし、実行中はスピナーと穏やかな入力欄の明滅を表示します。
+- **必要な説明だけを手元へ。** 作業の安全な区切りで、実装中のノートを本人の提案量に合わせてOwnerへ表示できます。`L-000001`のような番号をAgentに送れば、元の実装を置き換えずに質問できます。実行中の長いツール呼び出しは、その呼び出しが終わってから応答します。
+- **予想時間は予想として。** AIが提示した場合に実装と検査の時間幅を分けて表示します。質問にかかった時間を加え、次の作業ターンで再見積もりできます。未取得・古い見積もりを確実な時刻に見せません。
+- **自分のペースで残す。** メモ、参照、委譲、次回のどれでも構いません。質問・スキップ・スキル移植・許可の操作から、本人の習得を認定しません。
+
+Agentの`/verantyx new`はAgentの会話だけを新しくします。OwnerのCleanroomは独立した名前と確認操作で管理します。候補の変更は**一度だけ／このワークスペース／永久／拒否**から選び、本体採用や公開の許可とは分けます。
+
+[作業中の学び・セッション・権限・保存](docs/live-learning-and-sessions.md) · [会話表示と差分確認](docs/conversation-and-change-review.md)
+
+横120文字 × 縦28行以上では同じ幅の左右2欄、横80文字 × 縦48行以上では上下表示、それより小さい場合は操作中の欄を表示します。サイズを理由に進行を止めません。空EnterによるAgent → メモ → 検索は同じです。端末の文字サイズは端末アプリ側で変更し、Web体験版では画面内の文字サイズボタンも使えます。
+
 ### 何が違うのか
 
 | | |
@@ -277,6 +309,21 @@ verantyx
 **不加入笔记的咨询：**`//问题` 是不使用工具的临时对话，不保存为 Cleanroom 的工作、日记、技能或学习记忆。模型服务商的留存政策另行适用。
 
 [分屏操作与隐私说明](docs/two-pane-interaction.md#简体中文) · [命令列表](#commands)
+
+### 边做边理解，不必等待完成
+
+不需要等项目完成后才看到值得理解的内容。
+
+- **连续对话。** Agent用有底色的请求和无底色的回答区分角色，系统状态单独显示，执行时有旋转指示和柔和的输入框动画。
+- **少量可选解释。** 在安全节点，根据你的建议预算在Owner展示实施中的笔记。发送`L-000001`一类编号即可提问，不替换原任务。正在执行的长工具调用会先完成。
+- **估时不是承诺。** AI提供估时后分别显示实现和检查的时间范围。问题的耗时会计入，之后可重新估算；缺失或过时的估时保持明确标记。
+- **按自己的节奏。** 记笔记、参阅、委托或留到下次均可。提问、跳过、导入技能或授权不会被算作已掌握。
+
+Agent中的`/verantyx new`只新建Agent对话。Owner的Cleanroom独立命名，并在切换前确认。候选变更可选**仅一次／此工作区／永久／拒绝**，不等于允许发布或正式采用。
+
+[工作中的学习、会话、权限与存储](docs/live-learning-and-sessions.md) · [对话与差异审查](docs/conversation-and-change-review.md)
+
+120列 × 28行起使用等宽左右面板；80列 × 48行起可上下排列；更小时显示活动面板，不阻止使用。空Enter仍在Agent、备忘和搜索之间循环。终端字体由终端应用设置；浏览器体验版提供字号按钮。
 
 ### 不同之处
 
@@ -379,6 +426,21 @@ verantyx
 
 [분할 화면 조작과 개인정보](docs/two-pane-interaction.md#한국어) · [명령어 목록](#commands)
 
+### 완료를 기다리지 않고 작업 중에 이해하기
+
+프로젝트가 끝나야 이해할 내용을 볼 수 있는 것은 아닙니다.
+
+- **이어지는 대화.** Agent의 요청에는 배경색을, 응답에는 배경색 없이 표시합니다. 시스템 상태는 분리하며 실행 중에는 회전 표시와 부드러운 입력창 효과가 보입니다.
+- **필요한 설명만.** 안전한 작업 구간에서 설정한 제안량만큼 구현 중 노트를 Owner에 표시할 수 있습니다. `L-000001` 같은 번호로 원래 구현을 바꾸지 않고 질문합니다. 실행 중인 긴 도구 호출은 먼저 마칩니다.
+- **예상은 예상으로.** AI가 제시하면 구현과 검사 시간 범위를 따로 보입니다. 질문의 실제 소요 시간을 반영하고 다음 작업에서 다시 예상합니다. 없거나 오래된 예상은 그대로 표시합니다.
+- **나의 속도.** 메모, 참조, 위임, 다음 기회 중에서 고르세요. 질문, 건너뛰기, 스킬 가져오기, 권한 허용은 습득 인증이 아닙니다.
+
+Agent의 `/verantyx new`는 Agent 대화만 새로 만듭니다. Owner Cleanroom은 별도 이름과 확인 절차로 관리합니다. 후보 변경은 **한 번／이 작업 공간／영구／거부**이며 본체 채택이나 공개 권한과 다릅니다.
+
+[작업 중 학습, 세션, 권한과 저장](docs/live-learning-and-sessions.md) · [대화와 변경 검토](docs/conversation-and-change-review.md)
+
+120열 × 28행부터 같은 너비의 좌우 패널을, 80열 × 48행부터 상하 패널을 사용합니다. 더 작으면 활성 패널만 보여주며 진행을 막지 않습니다. 빈 Enter 전환은 같습니다. 터미널 글꼴 크기는 터미널 앱에서, 웹 체험 글자 크기는 화면 버튼에서 바꿉니다.
+
 ### 무엇이 다른가
 
 | | |
@@ -480,6 +542,21 @@ Las sugerencias y los ajustes tienen prioridad sobre el historial. Cada campo co
 
 [Controles y límites de privacidad](docs/two-pane-interaction.md#español) · [Comandos](#commands)
 
+### Comprender mientras el trabajo sigue
+
+No hace falta esperar a que el proyecto termine.
+
+- **Conversación continua.** Peticiones con fondo, respuestas sin fondo y actividad del sistema por separado. Un indicador giratorio y un pulso suave muestran trabajo en curso.
+- **Una explicación útil, opcional.** En pasos seguros, Owner puede mostrar notas de implementación dentro de tu presupuesto de sugerencias. Envía un ID como `L-000001` para preguntar sin sustituir la tarea. Una llamada larga a una herramienta termina primero.
+- **Estimaciones, no promesas.** Si la IA las proporciona, implementación y pruebas tienen rangos separados. Se suma el tiempo medido de las preguntas; el siguiente turno puede revisar la estimación. La ausencia o antigüedad se indica expresamente.
+- **Tu ritmo.** Anota, consulta, delega o retómalo después. Preguntar, omitir, importar una habilidad o conceder permiso no certifica comprensión.
+
+`/verantyx new` en Agent crea solo una conversación Agent. Los Cleanrooms de Owner tienen nombres y confirmaciones independientes. Los cambios candidatos ofrecen **una vez / este espacio / permanente / rechazar**, no autorización para publicar ni adoptar en el proyecto principal.
+
+[Aprendizaje en curso, sesiones, permisos y almacenamiento](docs/live-learning-and-sessions.md) · [Conversación y revisión de cambios](docs/conversation-and-change-review.md)
+
+Desde 120 columnas × 28 filas se usan paneles iguales en paralelo; desde 80 × 48 pueden apilarse. Las ventanas menores muestran el panel activo sin bloquear. Enter vacío sigue recorriendo Agent, Nota y Buscar. La fuente del terminal se cambia en su aplicación; el ensayo web tiene controles de tamaño.
+
 ### Qué lo hace distinto
 
 | | |
@@ -538,12 +615,16 @@ Start with a normal request. Use `/help` or F2 when you need an action, without 
 |---|---|
 | `verantyx` | Split Agent / Owner workspace |
 | `verantyx --plain` | Plain terminal interface |
+| `verantyx new [name]` | New Agent session; Owner notebook is independent |
+| `verantyx new --owner [name]` | New named Owner Cleanroom, after confirmation |
+| `verantyx cleanroom [name]` | List or switch named Owner Cleanrooms |
+| `verantyx compact` | Source-backed AI context summary, preserving original records |
 | `verantyx tutorial` | Simulated keyboard practice; no model calls or saved practice work |
 | `verantyx commands` | Registered commands |
 | `verantyx commands setup --json` | Details from the actual parser |
 | `verantyx setup` | Arrow-key settings menu; offers practice on first exit |
 | `verantyx setup accounts` | Official CLI account connections |
-| `verantyx setup models` | Work / reflection models, including a configured local Ollama endpoint |
+| `verantyx setup models` | Work / reflection connection: subscription, API, Ollama or LM Studio; supported reasoning and context controls |
 | `verantyx setup roles` | Model role configuration |
 | `verantyx setup profile` | Your voluntary experience profile |
 | `verantyx setup pace` | Suggestion amount, timing and weight |
@@ -569,6 +650,12 @@ Start with a normal request. Use `/help` or F2 when you need an action, without 
 | Ordinary text without `/` | Leave the settings conversation and ask for work |
 | `/attach "/path/file.pdf"`, `/detach` | Queue or clear attachments before the send confirmation |
 | `/details` | Expand system activity separately from the answer |
+| `/insights`, `L-000001` | Browse recent implementation-time explanations, or ask about a particular note |
+| `/verantyx new` | Start a new Agent conversation; in Owner, confirm a new Owner Cleanroom |
+| `/verantyx cleanroom` | List Owner Cleanrooms, then confirm switching or rename |
+| `/compact`, `/verantyx compact` | Compact source-backed context without deleting original records |
+| `/queue` | See work scheduled after the active task |
+| `/approvals` | Inspect or revoke candidate-edit permission grants |
 | `//your question` | Temporary, tool-free chat, excluded from Cleanroom learning and work memory |
 | `/tutorial`, `/done` | Start or finish simulated practice |
 | `/close` | Close the inline interaction and clear temporary chat context |
@@ -576,6 +663,11 @@ Start with a normal request. Use `/help` or F2 when you need an action, without 
 See the five-language guide for privacy boundaries, terminal compatibility and attachment limits.
 
 ## Detailed documentation
+
+- [Live learning, independent sessions, estimates, permissions and SQLite history](docs/live-learning-and-sessions.md)
+- [Conversation display, queueing and candidate change review](docs/conversation-and-change-review.md)
+- [Responsive reading and the browser/CLI boundary](docs/READABILITY.md)
+- [English CLI recording recipe and scripted-data disclosure](docs/DEMO_RECORDING.md)
 
 - [Current split-pane controls, tutorial, inline settings and attachments (5 languages)](docs/two-pane-interaction.md)
 
@@ -586,6 +678,7 @@ See the five-language guide for privacy boundaries, terminal compatibility and a
 - [Guía de uso (Español)](core/docs/OPERATIONS.es.md)
 - [Origins: original material, translations and development history](core/docs/origins/README.md)
 - [Privacy, preview boundaries and publication architecture](docs/PUBLICATION.md)
+- [Release validation and MVP scope / 検証範囲と公開判断](docs/RELEASE_SCOPE.md)
 - [Personal profile and learning pace](core/docs/PERSONAL_GROWTH.ja.md)
 - [Skills and harnesses](core/docs/SKILLS_AND_HARNESSES.ja.md)
 - [Implementation-time learning](core/docs/LEARNING_CONTINUITY.en.md)

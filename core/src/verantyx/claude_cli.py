@@ -41,9 +41,13 @@ def require(condition, reason, code="BRIDGE_CONFIG"):
 
 
 def validate_config(value):
-    require(type(value) is dict and set(value) == FIELDS, "CLAUDE_CONFIG")
+    require(type(value) is dict and FIELDS <= set(value) <= FIELDS | {"reasoning_effort", "context_window"}, "CLAUDE_CONFIG")
     require(value["format"] == FORMAT and value["provider"] == "claude_code", "CLAUDE_PROVIDER")
     validate_model(value["model"])
+    if "reasoning_effort" in value:
+        require(value["reasoning_effort"] in ("low", "medium", "high", "xhigh", "max"), "CLAUDE_CONFIG")
+    if "context_window" in value:
+        require(type(value["context_window"]) is int and 4096 <= value["context_window"] <= 2000000, "CLAUDE_CONFIG")
     executable = value["executable"]
     require(type(executable) is str and 0 < len(executable) <= 4096
             and "\x00" not in executable and Path(executable).is_absolute()
@@ -83,6 +87,8 @@ def _argv(value, output_schema):
     ]
     if value["model"] != "default":
         arguments += ["--model", value["model"]]
+    if value.get("reasoning_effort"):
+        arguments += ["--effort", value["reasoning_effort"]]
     return arguments
 
 

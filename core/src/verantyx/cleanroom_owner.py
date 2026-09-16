@@ -77,7 +77,7 @@ def _read_locked(fd):
     return records
 
 
-def read_notes(root):
+def read_legacy_notes(root):
     try:
         fd = os.open(_location(root), os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     except FileNotFoundError:
@@ -93,7 +93,7 @@ def read_notes(root):
         os.close(fd)
 
 
-def save_note(root, body, *, key, run_id=None):
+def save_legacy_note(root, body, *, key, run_id=None):
     """One explicit local note; repeat the same key after an uncertain save."""
     if not isinstance(body, str) or not 1 <= len(body.strip()) <= 4000 or not re.fullmatch(r"[a-f0-9]{32}", key):
         raise LedgerError("OWNER_NOTE_INVALID")
@@ -130,6 +130,16 @@ def save_note(root, body, *, key, run_id=None):
         os.close(fd)
 
 
+
+def read_notes(root, room_id=None):
+    from .session_store import memo_rows
+    return memo_rows(root, room_id)
+
+
+def save_note(root, body, *, key, run_id=None, room_id=None):
+    from .session_store import save_memo
+    return save_memo(root, body.strip(), key=key, run_id=run_id, room=room_id)
+
 def _text(value):
     return value if isinstance(value, str) else canonical(value)
 
@@ -151,9 +161,11 @@ def catalogue(view, notes=()):
 
     if state.get("request"):
         add("request", state["request"].splitlines()[0], state["request"], state.get("request_ref"))
-    for note in reversed(list(notes)[-100:]):
-        items.append(make_item("note", note["body"].splitlines()[0], note["body"], source_ref="owner-note:" + note["id"],
-                               run_id=note.get("run_id"), revision=note["body_sha256"]))
+    for note in reversed(list(notes)):
+        item = make_item("note", note["body"].splitlines()[0], note["body"], source_ref="owner-note:" + note["id"],
+                         run_id=note.get("run_id"), revision=note["body_sha256"])
+        item["created_at"] = note.get("created_at", "")
+        items.append(item)
     for turn in state.get("work_turns", []):
         from .learning_capture import notes_from_event, pending_notes_from_event
         event = {"source_ref": turn["source_ref"], "payload": {"proposal": turn["proposal"]}}

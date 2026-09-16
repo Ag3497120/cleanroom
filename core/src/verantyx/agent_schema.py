@@ -10,7 +10,8 @@ WORK_REQUEST = "verantyx.work-agent-request.v1"
 REFLECTION_REQUEST = "verantyx.reflection-request.v1"
 REFLECTION_SKILLS_REQUEST = "verantyx.reflection-skills-request.v1"
 PERSONAL_REQUEST = "verantyx.personal-growth-request.v1"
-FORMATS = (WORK_REQUEST, REFLECTION_REQUEST, REFLECTION_SKILLS_REQUEST, PERSONAL_REQUEST)
+COMPACT_REQUEST = "verantyx.session-summary-request.v1"
+FORMATS = (WORK_REQUEST, REFLECTION_REQUEST, REFLECTION_SKILLS_REQUEST, PERSONAL_REQUEST, COMPACT_REQUEST)
 KINDS = ("PROJECT_DELTA", "HUMAN_REQUEST", "HUMAN_DECISION", "AI_DECISION",
          "ASSUMPTION", "OWN", "REVIEW", "REFERENCE", "DELEGATE", "FAILURE",
          "UNKNOWN", "RULE_CANDIDATE", "CHECK_CANDIDATE")
@@ -28,6 +29,9 @@ def array(items, maximum=24):
 
 
 def schema(request):
+    if request["format"] == COMPACT_REQUEST:
+        from .session_context import output_schema
+        return output_schema()
     if request["format"] == WORK_REQUEST:
         output = obj({
             "format": {"type": "string", "const": "verantyx.work-proposal.v1"},
@@ -44,6 +48,7 @@ def schema(request):
         })
         # Invalid optional teaching notes must not invalidate otherwise useful work.
         output["properties"]["learning_notes"] = {}
+        output["properties"]["work_pulse"] = {}
         return output
     if request["format"] in (REFLECTION_REQUEST, REFLECTION_SKILLS_REQUEST):
         output = obj({
@@ -79,6 +84,9 @@ def validate_output(request, document):
         raise LedgerError("BRIDGE_PROTOCOL", {"reason": "AGENT_OUTPUT_SCHEMA"})
     if len(canonical(document).encode("utf-8")) > 262144:
         raise LedgerError("DOCUMENT_LIMIT")
+    if request["format"] == COMPACT_REQUEST:
+        from .session_context import validate
+        return validate(request, document)
     if request["format"] == WORK_REQUEST:
         tools = document["tool_requests"]
         if len({row["id"] for row in tools}) != len(tools):
@@ -151,6 +159,12 @@ def generation_schema(request):
                 note["properties"][field]["maxItems"] = 0
         output["properties"]["learning_notes"] = array(note, 4)
         output["required"].append("learning_notes")
+        if request.get("capture_learning"):
+            from .work_pulse import output_schema as pulse_schema
+            output["properties"]["work_pulse"] = pulse_schema()
+            output["required"].append("work_pulse")
+        else:
+            output["properties"].pop("work_pulse", None)
     if request.get("format") == PERSONAL_REQUEST and request.get("mode") == "unpack":
         refs = [row["source_ref"] for row in request.get("trace", {}).get("events", [])]
         for name in ("parts", "can_delegate"):

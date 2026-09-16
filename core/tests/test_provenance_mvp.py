@@ -12,7 +12,7 @@ import uuid
 from verantyx import config
 from verantyx import agent_runtime as runtime
 from verantyx.agent_projection import owner_projection
-from verantyx.agent_schema import WORK_REQUEST, REFLECTION_REQUEST
+from verantyx.agent_schema import WORK_REQUEST, REFLECTION_SKILLS_REQUEST as REFLECTION_REQUEST
 from verantyx.domain.codec import canonical
 from verantyx.errors import LedgerError
 from verantyx.work_checks import run_check
@@ -21,6 +21,9 @@ from test_work_ownership_planes import work, tool, reflection
 
 class ProvenanceMVP(TestCase):
     def setUp(self):
+        harness_call = mock.patch("verantyx.work_harness.invoke", side_effect=lambda *args, **kwargs: runtime.invoke(*args, **kwargs))
+        harness_call.start()
+        self.addCleanup(harness_call.stop)
         self.tmp = TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)

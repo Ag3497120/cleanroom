@@ -30,8 +30,8 @@ class InteractionUX:
         if not practice:
             self._refresh_model_label()
 
-    def _ux(self, key):
-        return tr(key, self.configuration["ui"]["locale"])
+    def _ux(self, key, **values):
+        return tr(key, self.configuration.get("ui", {}).get("locale", "en"), **values)
 
     def _refresh_model_label(self):
         try:
@@ -48,7 +48,7 @@ class InteractionUX:
         if self.volatile_answer is not None:
             return self._ux("private") + "\n\n" + self.volatile_answer
         if self.practice:
-            return self._ux("demo_answer") + "\n\n" + self._ux("demo_steps")
+            return self._ux("demo_answer") + "\n\n" + self._ux("demo_steps") + "\n\n" + self._ux("workflow_guide")
         projection = (self.view or {}).get("ownership_projection") or {}
         answer = projection.get("work_answer")
         if answer:
@@ -73,7 +73,7 @@ class InteractionUX:
         return "class:pane.agent"
 
     def _pane_caption(self, name):
-        return name.upper() + (" / " + self._ux("active") if self.active_input == name else "")
+        return name.upper() + " / " + self._session_caption(name) + (" / " + self._ux("active") if self.active_input == name else "")
 
     def _menu_detail(self):
         if not self.picker:
@@ -158,6 +158,7 @@ class InteractionUX:
                 self._render()
                 return True
             if self.practice:
+                self._tour_event("private")
                 self.info_text = self._ux("private") + "\n\n" + self._ux("demo_answer")
                 self._render()
             else:
@@ -168,6 +169,17 @@ class InteractionUX:
         head, rest = head.casefold(), rest.strip()
         known = {"/verantyx", "/model", "/models", "/settings", "/help", "/commands",
                  "/attach", "/detach", "/tutorial", "/done", "/close", "/details"}
+        known.update(("/queue", "/approvals"))
+        if head in ("/queue", "/approvals") and not self.settings_active:
+            buffer.reset()
+            if head == "/queue":
+                self._queue_menu()
+            else:
+                if self.busy:
+                    buffer.text = value
+                    return True
+                self.start_action("inline-settings", section="permissions")
+            return True
         if head not in known:
             if not self.settings_active:
                 from .attachment_inputs import paths_in_text
@@ -215,6 +227,7 @@ class InteractionUX:
                     self.owner_drafts = {"memo": "", "search": ""}
                     self.owner_input.buffer.reset()
                 self.practice = True
+                self.tour_step = 0
                 self.info_text = None
                 self.practice_notes = []
                 self.active_input = "agent"
@@ -282,6 +295,7 @@ class InteractionUX:
         return True
 
     def _end_practice_setting(self):
+        self._tour_event("settings")
         self.settings_active = False
         self.info_text = self._ux("demo") + "\n\n" + self._ux("demo_steps")
         self._render()
@@ -299,9 +313,11 @@ class InteractionUX:
         if not buffer.text.strip():
             self._cycle_inputs()
         elif self.owner_mode == "memo":
+            self._tour_event("memo")
             self.practice_notes.append(buffer.text)
             buffer.reset()
             self._render()
         else:
+            self._tour_event("search")
             self._render()
         return True

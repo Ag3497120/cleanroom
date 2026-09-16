@@ -8,7 +8,7 @@ from .interaction_text import tr, help_text
 
 
 def offer(root, configuration, *, force=False):
-    marker = Path(root) / ".verantyx" / "interaction-tour-v2"
+    marker = Path(root) / ".verantyx" / "interaction-tour-v3"
     if not force and marker.is_file():
         return
     if not (sys.stdin.isatty() and sys.stdout.isatty()):
@@ -28,11 +28,14 @@ def offer(root, configuration, *, force=False):
 
     print("\n" + tr("size", lang))
     print(tr("demo", lang))
+    launch_real = False
     try:
         selected = prompt("Enter / Esc > ", key_bindings=bindings)
         if selected != "skip":
             from .cleanroom_tui import Cleanroom
-            asyncio.run(Cleanroom(root, configuration, practice=True).run())
+            demo = Cleanroom(root, configuration, practice=True)
+            asyncio.run(demo.run())
+            launch_real = demo.tour_launch_real
     except (EOFError, KeyboardInterrupt):
         pass
     if not force and not marker.parent.is_symlink():
@@ -43,3 +46,4 @@ def offer(root, configuration, *, force=False):
                 stream.write("offered\n")
         except FileExistsError:
             pass
+    return launch_real
