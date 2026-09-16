@@ -661,5 +661,17 @@
   "console.generation.thinking_characters": "수신한 thinking: {count}자 (화면에서 생략한 부분 포함)",
   "console.generation.response_characters": "수신한 답변: {count}자",
   "console.generation.generated_tokens": "모델이 보고한 생성량: {count}토큰",
-  "console.generation.output_token_limit": "설정된 생성 한도: {count}토큰"
+  "console.generation.output_token_limit": "설정된 생성 한도: {count}토큰",
+  "event.WorkSessionOpened": "작업 세션 시작",
+  "event.WorkTurnRecorded": "AI 작업 제안 기록",
+  "event.WorkToolRecorded": "작업 도구 결과 기록",
+  "event.WorkResultRecorded": "작업 결과 저장",
+  "event.WorkOwnerReplyRecorded": "소유자의 답변 기록",
+  "event.ReflectionRecorded": "AI 정리 이력 저장",
+  "event.WorkCheckStarted": "후보 검사 시작 기록",
+  "event.WorkCheckRecorded": "후보 검사 결과 기록",
+  "event.OwnerItemChoiceRecorded": "소유자가 선택한 참여 방식 기록",
+  "event.OwnerExperienceNoteRecorded": "소유자의 메모 저장",
+  "event.OwnerDesignDecisionRecorded": "소유자의 설계 결정 기록",
+  "event.OwnerDesignDecisionWithdrawn": "소유자의 설계 결정 철회 기록"
 }

@@ -81,7 +81,7 @@ def project_note_run(root, configuration):
     return result["state"]["run_id"]
 
 
-def cards(state, *, include_dismissed=False):
+def cards(state, *, include_dismissed=False, include_archived=False):
     owned = state.get("owner_experience", empty_state())
     successful = [row for row in state.get("work_reflections", []) if row["status"] == "PROPOSED"]
     latest = successful[-1]["id"] if successful else None
@@ -94,7 +94,7 @@ def cards(state, *, include_dismissed=False):
             choice = owned["cards"].get(identifier)
             local_notes = [row for row in notes if row["item"] == reference]
             # Reclassification never discards a human's earlier choice or notes.
-            if reflection["id"] != latest and not choice and not local_notes:
+            if not include_archived and reflection["id"] != latest and not choice and not local_notes:
                 continue
             status = choice["status"] if choice else "PROPOSED"
             if status == "DISMISSED" and not include_dismissed:
@@ -104,6 +104,8 @@ def cards(state, *, include_dismissed=False):
                 "run_id": state["run_id"], "request": state["request"],
                 "revision": state["revision"], "reflection_id": reflection["id"],
                 "model": deepcopy(reflection["model"]), "source_ref": reflection["source_ref"],
+                "perspective": reflection.get("perspective", ""),
+                "generation_id": reflection.get("generation_id"),
                 "status": status, "authority": "PROPOSAL_ONLY",
                 "target": choice["target"] if choice else (proposal["kind"] if proposal["kind"] in TARGETS else None),
                 "target_is_suggestion": choice["target_is_suggestion"] if choice else True,
@@ -127,6 +129,7 @@ def project(states, configuration):
         if result:
             works.append({"run_id": state["run_id"], "request": state["request"],
                           "result": deepcopy(result),
+                          "checks": deepcopy(list(state.get("work_checks", {}).values())),
                           "reflection_status": (state.get("work_reflections") or [{"status": "PENDING"}])[-1]["status"]})
             if result["status"] == "WAITING_OWNER" and not state.get("work_owner_reply"):
                 questions.append({"run_id": state["run_id"], "request": state["request"],

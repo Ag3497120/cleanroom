@@ -64,7 +64,7 @@ def validate(value: dict) -> None:
             }:
                 raise ValueError()
             if selection["format"] != "verantyx.model-selection.v1" or selection["kind"] not in (
-                "codex_subscription", "model_api"
+                "codex_subscription", "claude_subscription", "model_api"
             ):
                 raise ValueError()
             if (not isinstance(selection["label"], str) or not 1 <= len(selection["label"].strip()) <= 240

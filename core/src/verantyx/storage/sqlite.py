@@ -57,6 +57,7 @@ class EventStore:
         self.connection = None
         self._lock_depth = 0
         self._project_snapshot = None
+        self._project_snapshot_token = None
         if not self.path.exists() and not create:
             return
         if create:
@@ -130,6 +131,7 @@ class EventStore:
 
     def close(self):
         self._project_snapshot = None
+        self._project_snapshot_token = None
         if self.connection is not None:
             self.connection.close()
             self.connection = None
@@ -172,15 +174,19 @@ class EventStore:
         return values
 
     def project_snapshot(self):
-        """One validated read snapshot, cached only for this connection's unchanged DB.
+        """Return a private copy of the current validated project snapshot."""
+        return self.project_snapshot_if_changed()[1]
 
-        No projection is persisted or trusted instead of the event ledger. External
-        changes, this connection's writes and schema changes invalidate the cache,
-        including edits that leave MAX(seq) unchanged. Callers receive private copies.
+    def project_snapshot_if_changed(self, previous_token=None):
+        """Return (opaque token, private snapshot), or (token, None) if unchanged.
+
+        Tokens are connection-local identities for display polling, not revisions,
+        evidence, or authority. All database invalidation checks still run. Public
+        snapshots remain private copies; the cached snapshot is never exposed.
         """
         empty = {"project_revision": 0, "events": [], "states": [], "rules": {}, "as_of": None}
         if self.connection is None:
-            return empty
+            return None, empty
         # A caller-owned transaction might roll back without reducing total_changes.
         # Neither reuse nor retain snapshots of its potentially uncommitted writes.
         cacheable = not self.connection.in_transaction
@@ -200,9 +206,12 @@ class EventStore:
                             "states": [replay(group) for group in groups.values()], "rules": rules,
                             "as_of": max((event["recorded_at"] for event in events), default=None)}
                 if not cacheable:
-                    return deepcopy(snapshot)
+                    return None, deepcopy(snapshot)
                 self._project_snapshot = (stamp, snapshot)
-            return deepcopy(self._project_snapshot[1])
+                self._project_snapshot_token = object()
+            if previous_token is not None and previous_token is self._project_snapshot_token:
+                return previous_token, None
+            return self._project_snapshot_token, deepcopy(self._project_snapshot[1])
 
     def runs(self):
         if self.connection is None:

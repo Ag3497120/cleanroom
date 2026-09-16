@@ -33,7 +33,7 @@ READ_COMMANDS.add("shared-context")
 READ_COMMANDS.add("sovereignty")
 READ_COMMANDS.update(("recap", "codex-usage"))
 READ_COMMANDS.update(("constitution", "constitution-gaps"))
-READ_COMMANDS.add("ownership")
+READ_COMMANDS.update({"ownership", "notebook", "perspectives"})
 CANDIDATE_COMMANDS = {"run", "resume"}
 CONTROL_COMMANDS = {"authority-request", "authority-execute"}
 CONTROLLED_WORKER_COMMANDS = {"service-worker"}  # Per-job signed attestation is mandatory in its dispatcher.

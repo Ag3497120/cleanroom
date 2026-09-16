@@ -4,11 +4,18 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "verantyx"
-version = "0.7.5rc1"
+version = "0.7.5rc2"
 description = "A local-first collaborative development foundation that preserves human project ownership while AI implements"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = ["jsonschema>=4.25,<5", "cryptography>=41,<47", "psutil>=5.9,<8", "rich>=13.9,<15", "prompt-toolkit>=3.0.48,<4"]
+
+[project.optional-dependencies]
+mcp = ["mcp>=1.12,<2"]
+
+[project.urls]
+Repository = "https://github.com/Ag3497120/cleanroom"
+Issues = "https://github.com/Ag3497120/cleanroom/issues"
 
 [project.scripts]
 verantyx = "verantyx.cli:main"
@@ -17,4 +24,4 @@ verantyx = "verantyx.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-verantyx = ["locales/*.json", "schemas/*.json", "policies/*.cross", "cross-build.json"]
+verantyx = ["locales/*.json", "schemas/*.json", "policies/*.cross", "cross-build.json", "web/atlas/*.html", "web/atlas/*.css", "web/atlas/*.js"]

@@ -35,6 +35,8 @@ def _apply(state, event):
     state.setdefault("work_trace_events", []).append(deepcopy(event))
     from ..domain.work import apply_event as apply_work
     apply_work(state, event)
+    from ..domain.work_checks import apply_event as apply_work_check
+    apply_work_check(state, event)
     from ..domain.owner_experience import apply_event as apply_owner_experience
     apply_owner_experience(state, event)
     from ..domain.effects import validate_binding

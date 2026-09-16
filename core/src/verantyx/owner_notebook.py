@@ -44,7 +44,9 @@ def show_project(root, configuration, context_files=()):
         _line("  " + work["request"][:120])
         for artifact in work["result"]["artifacts"][:4]:
             _line("    候補: " + artifact["path"])
-        _line("    検証: " + work["result"]["evidence_status"] + " / 本体への採用は別操作")
+        checks = work.get("checks", [])
+        check_status = ", ".join((row["result"] or {}).get("status", "UNKNOWN") for row in checks)
+        _line("    検証: " + (check_status or work["result"]["evidence_status"]) + " / 本体への採用は別操作")
     if not notebook["works"]:
         _line("まだ仕事の記録はありません。最初の依頼からノートが育ちます。")
     counts = notebook["counts"]
@@ -64,7 +66,13 @@ def show_receipt(root, result):
     work = state["work_result"]
     _line("\nWORK / " + {"SUCCEEDED": "結果を保存しました", "WAITING_OWNER": "あなたの判断を待っています",
                          "PARTIAL": "進めた範囲を保存しました", "FAILED": "作業を完了できませんでした"}[work["status"]])
-    _line(work["answer"])
+    if work["answer"]:
+        _line(work["answer"])
+    elif work["status"] == "FAILED":
+        _line("AIから作業の回答を取得できませんでした。")
+    if work.get("reason"):
+        from .agent_console import failure_message
+        _line("停止理由: " + failure_message(work["reason"]))
     if work["question"]:
         _line("\nあなたに決めてほしいこと: " + work["question"])
     _line("\nYOUR CONTRIBUTION / あなたが与えたもの")
@@ -76,21 +84,39 @@ def show_receipt(root, result):
     _line("\nPROJECT / 今回残ったもの")
     for artifact in work["artifacts"]:
         _line("候補: " + artifact["path"])
+    if work.get("artifact_directory") and root is not None:
+        _line("候補を開く場所: " + str(Path(root) / work["artifact_directory"]))
     if not work["artifacts"]:
-        _line("回答を作業ノートへ保存しました。")
-    _line("本体は未変更。候補の採用と、正しさの確認は別です。")
-    _line("検査: この作業経路では未実行。AIの説明を検証結果にはしません。")
+        _line("回答を作業ノートへ保存しました。" if work["answer"]
+              else "依頼と実行状態を保存しました。回答・成果物はまだありません。")
+    from .work_boundary import message as boundary_message
+    _line(boundary_message(state))
+    _line("候補の採用と、正しさの確認は別です。")
+    from .work_checks import projection as project_checks
+    checks = project_checks(state)
+    if checks:
+        for check in checks:
+            _line("検査: " + check["label"] + " / " + check["status"] + " / 保存時点の候補コピーのみ")
+    else:
+        _line("検査: 未実行。AIの説明を検証結果にはしません。")
+    _line("別の見方はPerspectivesから追加・比較できます。回答の一致は求めません。")
     reflected = result.get("reflection") or (state.get("work_reflections") or [{"status": "PENDING"}])[-1]
     status = reflected["status"]
     if status == "FAILED":
-        _line("\nノートの意味整理だけ未完了です。回答と候補は残っています。")
+        if work["status"] == "SUCCEEDED":
+            _line("\nノートの意味整理だけ未完了です。取得できた作業結果は残っています。")
+        else:
+            _line("\n作業も意味整理も完了していません。進めた範囲と失敗の記録を保持しています。")
+        if reflected.get("failure_code"):
+            _line("整理の停止理由: " + reflected["failure_code"])
     elif status == "OFF":
         _line("\n意味整理はオフです。実際の作業記録は保存しています。")
     else:
         limit = state.get("learning_preferences", {}).get("max_items", 1)
         learning_mode = state.get("learning_preferences", {}).get("mode", "manual")
         values = experience.cards(state)
-        if learning_mode == "digest":
+        from .personal_growth import uses_personal_pace
+        if learning_mode == "digest" and not uses_personal_pace():
             suggestions = [row for row in values if row["target"] in ("OWN", "REVIEW")
                            and row["status"] not in ("DEFERRED", "DISMISSED")
                            and row["human_understanding"] == "NOT_ASSESSED"][:limit]
@@ -104,6 +130,11 @@ def show_receipt(root, result):
             _line("\nNEXT TIME / 次の仕事へ残す候補")
             _line(reusable[0]["text"] + "（まだ有効規則ではありません）")
     _line("\nReviewで、読む・メモする・参照・委譲を選べます。今すべて理解する必要はありません。")
+    from .personal_console import after_work
+    try:
+        after_work(root, None, result)
+    except Exception:
+        _line("本人用ノートの表示だけ未完了です。作業結果は保存されています。")
 
 
 def publish_saved_work(root, result):
@@ -129,8 +160,10 @@ def show_card(card):
               (" / AIの候補" if card["target_is_suggestion"] else " / あなたの選択"))
     if card["status"] == "DEFERRED":
         _line("今は後回しにしています。")
+    if card.get("perspective"):
+        _line("今回の見方: " + card["perspective"])
     if card["earlier_reflection"]:
-        _line("以前の整理から、あなたの選択・メモを保持しています。")
+        _line("以前の整理です。新しい整理があっても、この見方とあなたの選択を保持します。")
     for note in card["human_notes"]:
         _line("\nあなたの記録 / " + ("次のAIにも引き継ぐ" if note["share_with_ai"] else "自分用・AIへ送らない"))
         _line(note["text"])
@@ -238,13 +271,19 @@ def open_notebook(root, configuration, run_id=None, section="review"):
             rows.append(("card", card, prefix + card["text"][:80] + " / " + target))
         for memo in [row for row in notebook["notes"] if row["item"] is None][-10:]:
             rows.append(("memo", memo, "自分のメモ: " + memo["text"][:90]))
-        rows += [("project", None, "プロジェクトの目的・判断・変化を見る"),
+        rows += [("personal-profile", None, "My profile / プロジェクト共通の経験と希望"),
+                 ("personal-journal", None, "My journal / 作ったものと気づきの日記"),
+                 ("personal-next", None, "Next time / 少しずつ続ける理解・参照・委譲"),
+                 ("personal-pace", None, "My pace / 提案の重さ・今日だけ静かに"),
+                 ("personal-portfolio", None, "Portfolio / 実績として選ぶ"),
+                 ("project", None, "プロジェクトの目的・判断・変化を見る"),
                  ("notes", None, "自分のメモを残す"),
                  ("decisions", None, "自分の判断を見直す"),
                  ("search", None, "このノートから探す"),
                  ("filter", None, "理解・参照・委譲・後で見るを切り替える"),
                  ("history", None, "仕事を選ぶ・続きを進める"),
-                 ("organize", None, "別の整理AIで、この仕事を整理し直す")]
+                 ("organize", None, "Perspectives / 新しい見方を加える・以前の見方を選ぶ"),
+                 ("check", None, "Check / 保存した候補のコピーで検査を実行する")]
         _line("\nOWNER / 人間に残るプロジェクトノート")
         _line("一度に全部読む必要はありません。Escで仕事へ戻れます。")
         selected = ui._pick("必要なものだけ選ぶ", rows, lambda row: row[2])
@@ -252,7 +291,10 @@ def open_notebook(root, configuration, run_id=None, section="review"):
             return
         action, item, _ = selected
         try:
-            if action == "card":
+            if action.startswith("personal-"):
+                from .personal_console import menu
+                menu(root, configuration, action.removeprefix("personal-"))
+            elif action == "card":
                 _browse_card(root, configuration, item)
             elif action == "question":
                 _line(item["request"])
@@ -275,7 +317,17 @@ def open_notebook(root, configuration, run_id=None, section="review"):
                 if chosen:
                     filter_name = chosen
             elif action == "organize":
-                organize_menu(root, configuration, run_id)
+                from .provenance_console import perspectives_menu
+                perspectives_menu(root, configuration, run_id)
+            elif action == "check":
+                target = run_id
+                if target is None:
+                    chosen = ui._pick("検査する候補", [row for row in notebook["works"] if row["result"]["artifacts"]],
+                                      lambda row: row["request"][:100])
+                    target = chosen["run_id"] if chosen else None
+                if target:
+                    from .provenance_console import check_menu
+                    check_menu(root, configuration, target)
             elif action == "decisions":
                 choices = [(None, "新しく自分の判断を残す")] + [
                     (row, row["statement"]) for row in notebook["active_decisions"]]

@@ -661,5 +661,17 @@
   "console.generation.thinking_characters": "Thinking recibido: {count} caracteres (incluido lo omitido en pantalla)",
   "console.generation.response_characters": "Respuesta recibida: {count} caracteres",
   "console.generation.generated_tokens": "Generación indicada por el modelo: {count} tokens",
-  "console.generation.output_token_limit": "Límite de generación configurado: {count} tokens"
+  "console.generation.output_token_limit": "Límite de generación configurado: {count} tokens",
+  "event.WorkSessionOpened": "Sesión de trabajo iniciada",
+  "event.WorkTurnRecorded": "Propuesta de trabajo de IA registrada",
+  "event.WorkToolRecorded": "Resultado de herramienta registrado",
+  "event.WorkResultRecorded": "Resultado del trabajo guardado",
+  "event.WorkOwnerReplyRecorded": "Respuesta del propietario registrada",
+  "event.ReflectionRecorded": "Historial de reflexión de IA guardado",
+  "event.WorkCheckStarted": "Inicio de comprobación del candidato registrado",
+  "event.WorkCheckRecorded": "Resultado de comprobación del candidato registrado",
+  "event.OwnerItemChoiceRecorded": "Forma de participación elegida por el propietario registrada",
+  "event.OwnerExperienceNoteRecorded": "Nota del propietario guardada",
+  "event.OwnerDesignDecisionRecorded": "Decisión de diseño del propietario registrada",
+  "event.OwnerDesignDecisionWithdrawn": "Retirada de la decisión de diseño del propietario registrada"
 }

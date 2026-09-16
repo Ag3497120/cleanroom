@@ -47,6 +47,8 @@ from ..external_capture import EVENT_ACTORS as CAPTURE_ACTORS
 ACTORS.update(CAPTURE_ACTORS)
 from .work import EVENT_ACTORS as WORK_ACTORS
 ACTORS.update(WORK_ACTORS)
+from .work_checks import EVENT_ACTORS as WORK_CHECK_ACTORS
+ACTORS.update(WORK_CHECK_ACTORS)
 from .owner_experience import EVENT_ACTORS as OWNER_EXPERIENCE_ACTORS
 ACTORS.update(OWNER_EXPERIENCE_ACTORS)
 ENVELOPE = {"schema_version", "event_id", "project_id", "stream_id", "revision", "command_id",
@@ -142,6 +144,9 @@ def validate_event(event):
         kind = event["type"]
         if kind in OWNER_EXPERIENCE_ACTORS:
             from .owner_experience import validate_payload
+            validate_payload(kind, payload)
+        elif kind in WORK_CHECK_ACTORS:
+            from .work_checks import validate_payload
             validate_payload(kind, payload)
         elif kind in WORK_ACTORS:
             from .work import validate_payload

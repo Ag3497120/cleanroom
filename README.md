@@ -1,289 +1,309 @@
-# Vera / Cleanroom
+<p align="center"><img src="public/cleanroom/logo.svg" width="440" alt="cleanroom"></p>
 
-## AIに作らせても、開発者であることまで手放さない
+<p align="center"><strong>Let AI build. Keep being the developer.</strong></p>
 
-**Vera** は、AI が実装の大部分を担う開発において、プロジェクトの目的、設計判断、検証方法、失敗、技術的理解を人間側へ残し、人間がプロジェクトを理解しながら一緒に育て続けられるようにする共同開発基盤です。
+<p align="center"><a href="#en">English</a> · <a href="#ja">日本語</a> · <a href="#zh-Hans">简体中文</a> · <a href="#ko">한국어</a> · <a href="#es">Español</a></p>
 
-AI が行った作業を、完成したコードだけで終わらせません。作業から生まれた判断、仮定、検証、失敗事例、学習候補、委譲候補を、外部モデルに依存しないローカル資産として蓄積します。
+![Actual split CLI with scripted demonstration data](public/cleanroom/cli-demo.gif)
 
-> **AI が大量に実装しても、人間がプロジェクトの所有者・理解者・開発者であり続けるための CLI。**
+**Recorded CLI / scripted fixtures / no model calls.** [Recording recipe](docs/DEMO_RECORDING.md) · [MP4](public/cleanroom/cli-demo.mp4) · [Interactive preview](https://ag3497120.github.io/cleanroom/) · [Website](https://verantyx.ai)
 
-- **Vera Kernel**: 判断、証拠、UNKNOWN、規則、人間側の理解状態を管理する中核。
-- **Cleanroom**: 作業と、そこから人間に残る判断・理解を並べて見る、プロジェクト研究ノート付きの共同開発空間。
-- **`verantyx`**: Cleanroom を起動する CLI。通常の依頼に、独自コマンドの暗記は必要ありません。
+<a id="en"></a>
 
-**左で AI と作業し、右に自分の判断・メモ・理解が残る。** 二つの欄は、別々の AI エージェントではなく、一つのプロジェクトを見る二つの視点です。
+## English
 
-## Vera が解く問題
+### Let AI build. Keep being the developer.
 
-AI を使うと成果物は速く増えます。一方で、次のものが会話履歴や特定モデルの中だけに残り、人間側から失われやすくなります。
+Cleanroom is a collaborative development workspace powered by the Vera Kernel. AI can do most of the implementation while your purpose, decisions, understanding, verification methods, and experience stay with you.
 
-- なぜその設計を選んだのか
-- 何を守る必要があるのか
-- どの仮定で実装が進んだのか
-- 何を検証し、どこまでしか検証できていないのか
-- どの失敗を次回から自動で防げるのか
-- 人間が理解して判断すべきことは何か
-- AI に継続して委譲してよいことは何か
+### Start locally
 
-Vera は、外部 AI を交換可能な候補生成器・実装者として扱いながら、上の情報を人間とプロジェクトが所有する状態へ戻します。
+Python **3.11+** · macOS / Linux · Windows: **WSL2**. CLI command: `verantyx`.
 
-## 開発版 MVP でできること
-
-このリポジトリは開発版 MVP です。現在の更新候補は **0.7.5rc1** です。Agent / Owner 分割 UI の起動、メモ、検索、参照補完、送信確認、Codex 接続は一時プロジェクトで操作しました。ただし、その実演では要約タスクの受け渡しが保留となり、回答完了には至っていません。今回、その原因とファイルを変更しない回答の経路を修正しましたが、修正後の再実行・回帰・配布物検査は未実施です。正式な安定版公開や動作保証とは分けて扱います。
-
-更新内容と既知の制限は [0.7.5rc1 更新ノート](docs/RELEASE_0.7.5rc1.md) を参照してください。回答だけの依頼では、AI の本文を Agent / Notebook に回答候補として表示し、ローカル成果物に保存する経路を追加しています。回答候補の保存、内容の検証、本体への採用は別の状態です。
-
-Vera CLI は、AI を使った作業の前後に、次の資産をローカルへ残します。
-
-- **プロジェクトの目的と制約**: Constitution として保存し、後続の作業で参照する
-- **人間の判断と AI の仮定**: 誰が何を決めたか、どの範囲で仮定したかを分離する
-- **検証方法と証拠**: テスト、受入条件、検証範囲、未確認部分を記録する
-- **失敗事例と再発防止**: 失敗を単なる会話ログにせず、規則・確認項目・自動化候補へ変換する
-- **人間側の理解回収**: `OWN`、`REVIEW`、`REFERENCE`、`DELEGATE` の形で、後から身につけるべきことと委譲してよいことを分離する
-- **Ownership Report**: プロジェクトの変更、人間の判断、AI の仮定、証拠、UNKNOWN、学習候補、再利用可能な規則を一覧化する
-- **Work Loop**: 作業依頼を、既存規則で進められる範囲、仮定付きで進められる範囲、人間の判断が必要な範囲へ分ける
-
-Vera は「短い指示だから詳細を書き直してください」と人間へ仕事を押し戻すことを目的にしません。まず既存の Constitution、判断、規則、失敗事例を参照し、それでも人間にしか決められない重要な選択だけを明確にします。
-
-## 体験の流れ
-
-```text
-人間の目的・依頼
-        |
-        v
-既存の目的 / 判断 / 規則 / 失敗事例を参照
-        |
-        +--> 既知かつ安全: AI へ実装を委譲
-        +--> 可逆な曖昧さ: 仮定を記録して進行
-        +--> 複数案が必要: 分岐・比較
-        +--> 人間専有の判断: 一つの判断として返す
-        |
-        v
-作業結果を記録
-        |
-        +--> Project Delta: 何が変わったか
-        +--> Human Decisions: 人間が決めたこと
-        +--> AI Assumptions: AI が選んだこと・仮定したこと
-        +--> Evidence / UNKNOWN: 確認済みの範囲と未確認部分
-        +--> Learning Delta: 人間が回収する価値がある理解
-        +--> System Delta: 次回から規則・自動化できること
-```
-
-## 人間と AI の役割
-
-Vera は、人間と AI の作業量を半分ずつにするものではありません。調査、実装、反復作業、候補生成は AI に大きく委譲して構いません。
-
-人間側に残すのは、主に次の高レバレッジな所有権です。
-
-- プロジェクトの目的と優先順位
-- 守るべき不変条件
-- 公開範囲、セキュリティ、不可逆な変更
-- 重要なトレードオフ
-- AI の正しさを判断するために必要な原理
-- 自分自身に残したい能力
-
-そのため、Vera は「AI が知っている」「記録されている」「検証された」「人間が理解している」を同じ状態として扱いません。
-
-```text
-BUILD      実装は終わったか
-EVIDENCE   正しさはどこまで確認されたか
-OWNERSHIP  人間側に判断・理解が残っているか
-```
-
-たとえば、実装が完了していても、証拠が限定的だったり、人間が中心原理をまだ回収していなかったりする状態を、そのまま可視化します。
-
-## クイックスタート
-
-Vera CLI の実装は [`core/`](core/) にあります。
-
-```bash
-git clone https://github.com/Ag3497120/project-cleanroom.git
-cd project-cleanroom
+```sh
+git clone https://github.com/Ag3497120/cleanroom.git cleanroom
+cd cleanroom
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -e ./core
-
-# 共同開発したいプロジェクトへ移動して起動
-cd /path/to/your-project
+verantyx setup accounts
 verantyx
 ```
 
-初回でも、学習方針や内部用語の設定を先に求めません。現在のフォルダを対象に安全側の初期設定を作り、直接依頼できる画面を開きます。モデル接続の設定や、外部へ送る内容の確認は別に行います。
+[Operating guide](core/docs/OPERATIONS.en.md) · [Commands](#commands) · [About the author](docs/AUTHOR.md#en)
 
-```text
-Cleanroom / your-project
-+-----------------------------+---+--------------------------------+
-| Agent                       |   | Owner                          |
-|                             |   | MEMO / SEARCH                  |
-| Work, progress, results     |   | >                              |
-|                             |   +--------------------------------+
-|                             |   | Your requests                  |
-|                             |   | Human decisions                |
-|                             |   | Personal notes                 |
-|                             |   | Questions and understanding    |
-|                             |   | Evidence and unknowns          |
-|                             |   |                                |
-+-----------------------------+   |                                |
-| > Ask Agent                 |   |                                |
-+-----------------------------+---+--------------------------------+
+### Split CLI: Agent on the left, Owner on the right
+
+- Ask in the lower-left Agent field. No new command language to learn.
+- Empty Enter moves to the yellow Owner memo, then the green Owner search, then back to Agent.
+- Type at least the first two characters of an Owner item, choose with Up/Down, and press Tab to insert that reference. Enter selects an open suggestion, rather than sending the task.
+- F2 opens actions; F3 scrolls; F4 opens learning; Alt+0 restores the split. Ctrl+J adds a line. Ctrl+D closes at a safe boundary.
+
+### What stays with you
+
+- Your decisions and their reasons
+- AI assumptions, actual receipts, and remaining unknowns
+- Skills you choose to explore, reference, or delegate
+- Implementation-time notes, source links, and a journal that can carry into later work
+
+Work results and AI reflection are independent. Different models can offer different interpretations without erasing previous ones. AI procedure drafts are not proof that you have learned a skill. Skipping, delegating, or asking for help is not an ability judgment.
+
+Owner notes and search do not call AI. Explicitly inserted references enter the request's send scope. Private project and personal records are not meant for public GitHub commits.
+
+The name comes from the author's personal image of a cleanroom: an isolated sanctuary for human judgment. It is a metaphor, not an OS sandbox guarantee. This independently developed, non-commercially motivated project grew from a Japanese X post and the author's own unease about losing the experience of making things with AI.
+
+Personal motivation is not a restriction on use under the repository's actual license.
+
+> Source preview, not a certification of MVP completeness. The GIF uses scripted fixtures in the real CLI renderer; it is not a successful model benchmark. The browser playground is an in-memory interaction demo, not a remote shell.
+
+[↑ English / Languages](#en)
+
+<a id="ja"></a>
+
+## 日本語
+
+### AIに作らせても、開発者であることまで手放さない。
+
+Cleanroomは、Vera Kernelを基盤とする共同開発空間です。AIが実装の大部分を担っても、プロジェクトの目的、設計判断、検証方法、失敗、技術的理解を人間側に残し、一緒に育て続けられるようにします。
+
+### 手元で始める
+
+Python **3.11+** · macOS / Linux · Windows: **WSL2**. CLI command: `verantyx`.
+
+```sh
+git clone https://github.com/Ag3497120/cleanroom.git cleanroom
+cd cleanroom
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e ./core
+verantyx setup accounts
+verantyx
 ```
 
-依頼を起動時に渡すこともできます。
+[操作ガイド](core/docs/OPERATIONS.ja.md) · [Commands](#commands) · [本西航大とは](docs/AUTHOR.md#ja)
 
-```bash
-verantyx "ログイン画面を改善して"
+### 左はAgent、右はOwner
+
+- 左下のAgent欄へ普通の文章で依頼します。独自のコマンドを覚える必要はありません。
+- 空欄でEnterを押すと、Agent → 黄色のOwnerメモ → 緑色のOwner検索 → Agentを巡回します。
+- Owner項目の先頭2文字以上を入力し、上下矢印で選び、Tabで参照を挿入します。補完候補が開いている間のEnterは選択だけで、依頼は送りません。
+- F2は操作一覧、F3はスクロール、F4は理解の画面、Alt+0は分割表示。Ctrl+Jで改行し、Ctrl+Dで操作の区切りに終了します。
+
+### 仕事の後、手元に残るもの
+
+- 自分が決めたことと、その理由
+- AIの仮定、実際の検査記録、残っている不明点
+- 必要な分だけ選ぶ、学習・参照・委譲の候補
+- 作業途中の説明、出典、次の仕事へ続く日記
+
+作業結果とAIによる整理は別状態です。モデルごとの見方が違っても過去の整理を消しません。AIの手順が保存されたことを、本人の習得とは数えません。スキップ、委譲、相談を理解不足と推定しません。
+
+Ownerのメモと検索だけではAIを呼びません。依頼に明示的に挿入した参照は送信範囲に入ります。プロジェクトと個人の私的な記録を公開GitHubへ追加しないでください。
+
+私は日本語の「クリーンルーム」に、隔離された聖域のような、人間の判断が守られる場所を重ねて、このプロジェクトを始めました。これは私自身の比喩であり、一般的な語義やOSの隔離保証ではありません。ある日本語のX投稿と、AIを使う最近の開発や将来への不安が出発点です。
+
+個人の非商用的な制作動機を示すもので、リポジトリの実際のライセンスを変更・制限する表明ではありません。
+
+> ソース版のプレビューであり、MVP全項目の合格宣言ではありません。GIFは実際のCLI描画に台本付きのデモデータを流したものです。実モデルの成功記録ではありません。Webの体験欄はメモリ内だけの操作デモで、リモートシェルではありません。
+
+[↑ English / Languages](#en)
+
+<a id="zh-Hans"></a>
+
+## 简体中文
+
+### 让 AI 编写代码，但不放弃开发者的角色。
+
+Cleanroom 是以 Vera Kernel 为基础的协作开发空间。即使 AI 承担大部分实现工作，项目目标、设计判断、验证方法、失败经验和技术理解仍留在你手中。
+
+### 在本机开始
+
+Python **3.11+** · macOS / Linux · Windows: **WSL2**. CLI command: `verantyx`.
+
+```sh
+git clone https://github.com/Ag3497120/cleanroom.git cleanroom
+cd cleanroom
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e ./core
+verantyx setup accounts
+verantyx
 ```
 
-既存の非 editable インストールを使っている場合は、ソースを更新するだけでは CLI が切り替わらないことがあります。使用する仮想環境で、リポジトリ直下から `python -m pip install -e ./core` を実行してください。
+[操作指南](core/docs/OPERATIONS.zh-Hans.md) · [Commands](#commands) · [关于作者](docs/AUTHOR.md#zh-Hans)
 
-### Agent は左、Owner は右
+### 左侧 Agent，右侧 Owner
 
-**Agent の下の入力欄**は、AI に進めてほしい仕事を依頼する場所です。Agent の表示には観測できる進行や結果を出し、隠れた推論を演出しません。
+- 在左下方 Agent 输入框用自然语言提出任务，无需记住新命令。
+- 在空输入框按 Enter，依次切换：Agent → 黄色 Owner 备忘 → 绿色 Owner 搜索 → Agent。
+- 输入 Owner 条目的前两个或更多字符，用上下方向键选择，再按 Tab 插入引用。候选列表打开时，Enter 只选择候选，不提交任务。
+- F2 打开操作菜单，F3 滚动，F4 打开理解视图，Alt+0 返回分屏。Ctrl+J 换行，Ctrl+D 在安全的操作边界退出。
 
-**Owner の上の入力欄**は、自分のためのメモと検索です。その下に、自分の指示、人間の判断、AI の仮定、判断待ち、学習候補、検査記録、未解決事項を整理して表示します。
+### 工作完成后，留下什么
 
-最初のカーソルは Agent にあります。**入力が空のときの Enter** だけで、次の順に切り替えます。
+- 你的选择与理由
+- AI 假设、真实验证记录及未知事项
+- 由本人选择的学习、查阅或委托候选
+- 实现过程中的说明、来源和可延续的开发日记
 
-```text
-Agent request
-    -> Owner MEMO   [yellow]
-    -> Owner SEARCH [green]
-    -> Agent request
+工作结果与 AI 整理相互独立。不同模型可以提出不同观点，而不覆盖旧记录。AI 保存的步骤不代表本人已经掌握。跳过、委托或求助不会被认定为能力不足。
+
+Owner 备忘和搜索本身不会调用 AI。主动插入请求的引用会进入发送范围。不要将项目或个人私密记录提交到公共 GitHub。
+
+作者把 cleanroom 想象成保护人类判断的隔离空间。这是个人的比喻，不是操作系统沙箱保证。项目源于一篇日语 X 帖子，以及作者对 AI 开发中经验流失和未来的担忧。
+
+个人的非商业创作动机不改变仓库实际许可证的使用条件。
+
+> 这是源码预览，不是 MVP 全部达标的认证。GIF 使用真实 CLI 渲染器和脚本化演示数据，不是实际模型的成功测试。网页体验区仅在内存中模拟交互，不是远程终端。
+
+[↑ English / Languages](#en)
+
+<a id="ko"></a>
+
+## 한국어
+
+### AI에게 구현을 맡겨도, 개발자의 역할까지 놓지 마세요.
+
+Cleanroom은 Vera Kernel을 기반으로 하는 공동 개발 공간입니다. AI가 구현 대부분을 맡아도 프로젝트의 목적, 설계 판단, 검증 방법, 실패 경험, 기술적 이해는 사람에게 남습니다.
+
+### 내 컴퓨터에서 시작
+
+Python **3.11+** · macOS / Linux · Windows: **WSL2**. CLI command: `verantyx`.
+
+```sh
+git clone https://github.com/Ag3497120/cleanroom.git cleanroom
+cd cleanroom
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e ./core
+verantyx setup accounts
+verantyx
 ```
 
-| 入力欄 | 文字を入力したときの操作 |
+[사용 안내](core/docs/OPERATIONS.ko.md) · [Commands](#commands) · [작성자 소개](docs/AUTHOR.md#ko)
+
+### 왼쪽 Agent, 오른쪽 Owner
+
+- 왼쪽 아래 Agent 입력란에 자연스러운 문장으로 요청하세요. 새로운 명령어를 외울 필요가 없습니다.
+- 빈 입력란에서 Enter를 누르면 Agent → 노란색 Owner 메모 → 초록색 Owner 검색 → Agent 순서로 이동합니다.
+- Owner 항목의 앞 두 글자 이상을 입력하고 위아래 화살표로 고른 뒤 Tab으로 참조를 넣습니다. 후보가 열려 있을 때 Enter는 선택만 하고 요청을 보내지 않습니다.
+- F2는 작업 메뉴, F3는 스크롤, F4는 이해 화면, Alt+0은 분할 화면입니다. Ctrl+J로 줄바꿈, Ctrl+D로 안전한 작업 경계에서 종료합니다.
+
+### 작업 뒤에도 내게 남는 것
+
+- 나의 선택과 그 이유
+- AI의 가정, 실제 검증 기록, 남은 미확인 사항
+- 내가 선택하는 학습·참조·위임 후보
+- 구현 도중의 설명, 출처, 다음 작업으로 이어지는 일지
+
+작업 결과와 AI의 정리는 독립적입니다. 모델의 관점이 달라도 이전 기록은 유지됩니다. AI의 절차가 저장되었다고 사용자가 배웠다고 판단하지 않습니다. 건너뛰기, 위임, 도움 요청은 능력 부족의 근거가 아닙니다.
+
+Owner 메모와 검색만으로 AI를 호출하지 않습니다. 요청에 직접 넣은 참조는 전송 범위에 포함됩니다. 개인 기록과 프로젝트 비공개 기록을 공개 GitHub에 올리지 마세요.
+
+작성자는 cleanroom을 인간의 판단이 보호되는 격리된 공간으로 생각했습니다. 개인적인 비유이지 OS 샌드박스 보장이 아닙니다. 일본어 X 게시물과 AI 개발 과정에서 경험을 잃을지 모른다는 걱정에서 시작했습니다.
+
+개인의 비상업적 제작 동기는 저장소의 실제 라이선스를 바꾸거나 제한하지 않습니다.
+
+> 소스 미리보기이며 MVP 전체 통과를 보장하지 않습니다. GIF는 실제 CLI 렌더러에 시나리오 데이터를 넣어 녹화한 것으로, 실제 모델의 성공 기록이 아닙니다. 웹 체험은 메모리 안의 상호작용 데모이며 원격 셸이 아닙니다.
+
+[↑ English / Languages](#en)
+
+<a id="es"></a>
+
+## Español
+
+### Deja que la IA construya. Sigue siendo quien desarrolla.
+
+Cleanroom es un espacio de desarrollo colaborativo basado en Vera Kernel. Aunque la IA realice gran parte de la implementación, conservas el propósito, las decisiones, los métodos de verificación, los fallos y la comprensión técnica del proyecto.
+
+### Empezar en tu equipo
+
+Python **3.11+** · macOS / Linux · Windows: **WSL2**. CLI command: `verantyx`.
+
+```sh
+git clone https://github.com/Ag3497120/cleanroom.git cleanroom
+cd cleanroom
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e ./core
+verantyx setup accounts
+verantyx
+```
+
+[Guía de uso](core/docs/OPERATIONS.es.md) · [Commands](#commands) · [Sobre el autor](docs/AUTHOR.md#es)
+
+### Agent a la izquierda, Owner a la derecha
+
+- Escribe una petición normal en el campo Agent, abajo a la izquierda. No hace falta aprender un nuevo lenguaje de comandos.
+- Pulsa Enter con el campo vacío: Agent → nota Owner amarilla → búsqueda Owner verde → Agent.
+- Escribe al menos los dos primeros caracteres de un elemento Owner, elige con las flechas y pulsa Tab para insertar la referencia. Con sugerencias abiertas, Enter selecciona; no envía la petición.
+- F2 abre acciones; F3 permite desplazarte; F4 abre la vista de comprensión; Alt+0 restaura la división. Ctrl+J añade una línea y Ctrl+D cierra al terminar la operación en curso.
+
+### Lo que se queda contigo
+
+- Tus decisiones y sus razones
+- Supuestos de la IA, comprobaciones reales y cuestiones abiertas
+- Opciones de aprendizaje, consulta o delegación que tú eliges
+- Notas durante la implementación, fuentes y un diario que continúa entre proyectos
+
+El resultado del trabajo y la reflexión de la IA son independientes. Los modelos pueden ofrecer interpretaciones distintas sin borrar las anteriores. Un procedimiento de IA no certifica una habilidad humana. Delegar, omitir o pedir ayuda no implica falta de capacidad.
+
+Las notas y búsquedas Owner no llaman a la IA. Las referencias que insertas expresamente forman parte del contenido a enviar. No publiques registros privados del proyecto ni personales en GitHub.
+
+El nombre nace de la imagen personal del autor: un espacio aislado que protege el juicio humano. Es una metáfora, no una garantía de aislamiento del sistema operativo. El proyecto surgió de una publicación japonesa en X y de sus inquietudes sobre desarrollar con IA y perder experiencia.
+
+La motivación personal no comercial no modifica ni restringe la licencia real del repositorio.
+
+> Vista previa del código fuente, no certificación de un MVP completo. El GIF usa datos preparados en el renderizador real de la CLI; no es una prueba exitosa de un modelo. La demo web funciona en memoria y no es un shell remoto.
+
+[↑ English / Languages](#en)
+
+<a id="commands"></a>
+
+## Commands / コマンド / 命令 / 명령어 / Comandos
+
+The F2 menu is the everyday entry. The live command catalogue comes from the installed CLI, not a separate hand-maintained registry.
+
+| Command | Purpose |
 |---|---|
-| Agent | Enter で依頼を送る。補完候補が開いている場合は、まず候補の選択だけを行う |
-| Owner / 黄色の `MEMO` | Enter で個人メモをローカルへ保存する |
-| Owner / 緑色の `SEARCH` | 入力に合わせて Owner の一覧をローカル検索する |
+| `verantyx` | Split Agent / Owner workspace |
+| `verantyx --plain` | Plain terminal interface |
+| `verantyx commands` | Registered commands |
+| `verantyx commands setup --json` | Details from the actual parser |
+| `verantyx setup` | Settings |
+| `verantyx setup accounts` | Official CLI account connections |
+| `verantyx setup models` | Work / reflection models |
+| `verantyx setup roles` | Model role configuration |
+| `verantyx setup profile` | Your voluntary experience profile |
+| `verantyx setup pace` | Suggestion amount, timing and weight |
+| `verantyx my-skills` | AI procedures and your chosen experience records |
+| `verantyx my-learning` | Implementation-time notes and explanations |
+| `verantyx my-journal` | Personal development journal |
+| `verantyx web` | Private, local My Atlas |
+| `verantyx watch` | Read-only view; not another agent |
+| `verantyx setup notebook` | Obsidian / notebook bridge |
+| `verantyx setup harness` | Trusted external work adapter |
+| `verantyx setup sandbox` | External isolation launcher configuration |
+| `verantyx toolbox status` | MCP / tool connections |
 
-メモと検索の下書きは別々に保持します。**Owner でメモを書いたり検索したりするだけでは、モデル呼び出し・作業依頼・採用承認は発生しません。** Agent が作業中でも Owner を使えます。作業中に Agent 側へ書いた依頼は下書きとして残り、無断で次の仕事へ投入されません。
+## Detailed documentation
 
-### Owner の項目を、その場で依頼へ差し込む
+- [Operating guide (English)](core/docs/OPERATIONS.en.md)
+- [操作ガイド (日本語)](core/docs/OPERATIONS.ja.md)
+- [操作指南 (简体中文)](core/docs/OPERATIONS.zh-Hans.md)
+- [사용 안내 (한국어)](core/docs/OPERATIONS.ko.md)
+- [Guía de uso (Español)](core/docs/OPERATIONS.es.md)
+- [Origins: original material, translations and development history](core/docs/origins/README.md)
+- [Privacy, preview boundaries and publication architecture](docs/PUBLICATION.md)
+- [Personal profile and learning pace](core/docs/PERSONAL_GROWTH.ja.md)
+- [Skills and harnesses](core/docs/SKILLS_AND_HARNESSES.ja.md)
+- [Implementation-time learning](core/docs/LEARNING_CONTINUITY.en.md)
+- [Obsidian, MCP, skill import and model handoff](core/docs/NOTEBOOK_CONNECTIONS.en.md)
+- [Sandbox responsibilities](core/docs/SANDBOX_BACKENDS.en.md)
+- [Live evaluation and limitations](core/docs/LIVE_EVALUATION.en.md)
 
-Agent の文章入力で、Owner にある項目名の先頭を **2文字以上** 入力すると補完候補を出します。専用コマンドや項目 ID を覚える必要はありません。
+## Contribution boundaries
 
-- **上下矢印**: 候補を移動する。
-- **Tab**: 選んだ項目を参照として挿入する。
-- **候補表示中の Enter**: 参照の選択だけを行い、依頼は送信しない。
-- **Esc**: 補完を閉じる。
+Meaning is proposed by the chosen AI. Authority, provenance, actual execution facts and asset states are maintained by Vera. Human understanding is not inferred from usage or delegation. Work survives reflection failure. Different interpretations remain versioned rather than forced into identical answers.
 
-挿入した参照には、選択した内容と、取得できる範囲の出典・作業 ID・リビジョンが結び付きます。送信する依頼に残っている選択項目だけを添付し、**選ばなかった Owner の個人メモは自動添付しません**。
-
-参照は承認や新しい命令ではなく、引用された文脈です。既存のプロジェクトファイル等の送信範囲確認は維持し、その確認時に選択した Owner の内容も表示します。参照は最大8件、添付を含む依頼は12,000文字までとし、超過時は黙って切り捨てず編集へ戻します。
-
-### 境界線で、受け渡しを見せる
-
-依頼が Owner に記録されるとき、Owner の項目を Agent へ渡すとき、判断依頼や持ち帰る理解が届くときは、境界線の一部が崩れ、受け渡しのラベルが現れてから線が戻る短いアニメーションを使います。
-
-アニメーションは入力を止めず、モデルを追加で呼び出しません。作業完了や検証成功の演出でもありません。`VERANTYX_REDUCE_MOTION=1` では即時表示に切り替えます。`NO_COLOR` を指定した場合も、`MEMO` / `SEARCH` と方向・項目種別のラベルは残します。
-
-### 覚える操作は少なく、詳細は必要なときに
-
-| 操作 | キー |
-|---|---|
-| 入力先・Owner モードを切り替える | 空欄で Enter |
-| Owner の参照候補を選ぶ | 上下矢印 + Tab |
-| 履歴・モデル設定・送信範囲などのメニュー | F2 |
-| 表示中のページへ移ってスクロールする | F3、その後に矢印 / PageUp / PageDown |
-| 今回の理解カードを開く | F4 |
-| 分割表示へ戻る | Alt+0 |
-| Owner / Agent / Evidence / Notebook | Alt+1 / Alt+2 / Alt+3 / Alt+4 |
-| 入力中に改行する | Alt+Enter |
-| 選択を取り消す・入力へ戻る | Esc |
-| 閉じる | Ctrl+D、またはメニューの Close |
-
-横140文字・縦24行以上では左右分割、横90文字・縦36行以上では上下配置、それより小さい端末では入力先に対応する欄を表示します。従来のスクロールバック形式は `verantyx --plain` で利用できます。
-
-別の端末を読む専用の表示にしたい場合は、同じプロジェクトで次を起動します。
-
-```bash
-verantyx watch
-```
-
-`watch` は表示用です。新しいエージェントを起動せず、作業実行や採用操作も行いません。
-
-### 学びを宿題にせず、仕事のそばに残す
-
-作業後には **Project / Human / Evidence / System / Growth** を分けた受領票を表示します。成果物に加えて、自分が決めたこと、確認した範囲、まだ分からないこと、次回に残る資産を見返せます。
-
-学習表示を digest モードにしている場合は、記録済みの候補から理解カードを1件、作業が落ち着いたときに任意表示します。F4 から、読む、振り返る、後で確認する、参照できれば十分とする、委譲する、といった扱いを選べます。手動表示・非表示の設定も尊重します。
-
-理解の回収を、実装や採用のたびに必須の宿題にはしません。「自分で説明した」という自己報告と、独立して確認された習熟も区別します。
-
-### ローカルに残るものと、権限の境界
-
-人間の判断・検証・学習の操作は既存のリビジョン付き台帳を使います。個人メモは、対象プロジェクトの `.verantyx/owner-notes.jsonl` に追記する別の参照用記録です。メモを書いたことを承認・証拠・習熟の達成とは扱いません。
-
-AI の候補作成と本体への採用は別の操作です。この UI は既存の許可・検証経路を利用し、表示上の選択だけで権限を増やしません。ただし、画面分割や CLI の所有者ロック自体が OS レベルのサンドボックスになるわけではありません。
-
-### モデルを設定する
-
-**F2 の操作メニューからモデル設定**を開きます。接続先の設定は英語ベースで、プロジェクトごとに保存します。通常の依頼や Owner のメモは日本語で書けます。
-
-```text
-F2 -> Model settings
-```
-
-設定できる接続先は次のとおりです。
-
-| 接続先 | 用途 | 認証情報の保存 |
-|---|---|---|
-| ChatGPT Codexサブスクリプション | このMacの既存Codexログインを利用 | APIキー不要 |
-| Ollama | 任意のローカルモデルを選択 | 不要 |
-| OpenAI API | OpenAI Responses API | `OPENAI_API_KEY`の名前だけを記録 |
-| Anthropic API | Anthropic Messages API | `ANTHROPIC_API_KEY`の名前だけを記録 |
-| Gemini API | Gemini Generate Content API | `GEMINI_API_KEY`の名前だけを記録 |
-| OpenAI互換ローカルサーバー | LM Studio、vLLM、llama.cpp、MLX系など | 原則不要 |
-
-APIキーの文字列はVeraが入力・保存しません。利用者がシェル環境へ設定した環境変数だけを、外部呼び出しの瞬間に読みます。
-
-```bash
-export OPENAI_API_KEY="..."
-export ANTHROPIC_API_KEY="..."
-export GEMINI_API_KEY="..."
-```
-
-OllamaやAPI接続では、作成役と検証役に別のモデルまたは別の接続先を選びます。Codexサブスクリプションは、既存の`implementation`と`verification`の役割設定を使用します。**モデルや役割を分けただけでは、独立検証の成立を保証しません。** モデルの評価と、実行した検査・確認範囲・UNKNOWN は区別して記録します。
-
-OpenAI互換ローカルサーバーは、次のいずれかのエンドポイントを提供する構成を対象にしています。
-
-```text
-http://127.0.0.1:1234/v1/responses
-http://127.0.0.1:1234/v1/chat/completions
-```
-
-操作・導入手順の詳細は、次のドキュメントを参照してください。
-
-- [Cleanroom 分割 CLI 操作ガイド（英語）](docs/CLEANROOM_CONSOLE.md)
-- [MVP ガイド](core/docs/OWNERSHIP_MVP.ja.md)
-- [CLI クイックスタート](core/docs/QUICKSTART.ja.md)
-
-## リポジトリ構成
-
-```text
-core/       Vera CLI、判断・所有・検証・学習回収の MVP
-docs/       Cleanroom 分割 CLI の操作・設計ガイド
-cross/      複数観点の構造的な照合・不一致検出に関する実験資産
-execution/  実行・候補適用・検証に関する補助資産
-app/        既存のアプリケーション資産
-lib/        既存の共有ライブラリ資産
-```
-
-このリポジトリには研究・実験段階の資産も含まれます。**開発版 MVP の入口は `core/` の Vera CLI** です。
-
-## 設計上の約束
-
-- 特定の外部 AI の会話履歴を、プロジェクトの唯一の記憶にしない
-- AI の提案、実行結果、人間の判断、検証証拠を混ぜない
-- 根拠が不足する場合は、もっともらしい確定で埋めず UNKNOWN として残す
-- 一度の成功だけで一般規則にせず、適用条件と失敗例を残す
-- 人間に学習を強制せず、理解・参照・委譲・自動化の選択肢を可視化する
-- モデルを交換しても、目的・判断・証拠・失敗・規則がローカルに残るようにする
-
-## 製品メッセージ
-
-> **AI に作らせても、開発者であることまで手放さない。**
-
-Vera は、AI が作った完成品を受け取るだけでなく、その設計判断、検証方法、失敗、そして人間が回収すべき理解を、人間とプロジェクトの資産として残す共同開発基盤です。
+This publication updates presentation and documentation. It does not turn a failed evaluation into a pass, certify human mastery, offer a production-safe public shell, or claim that a configured external sandbox has been independently verified. The CLI remains the primary product; browser previews and the existing IDE are complementary surfaces.

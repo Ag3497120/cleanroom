@@ -38,7 +38,7 @@ def _portable(schema, definitions=None):
 
 
 def output_schema(value):
-    from .agent_schema import FORMATS, schema as agent_schema
+    from .agent_schema import FORMATS, generation_schema as agent_schema
     if value.get("format") in FORMATS:
         return _portable(agent_schema(value))
     if value.get("format") == "verantyx.asset-workflow-request.v1":

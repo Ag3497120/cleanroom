@@ -661,5 +661,17 @@
   "console.generation.thinking_characters": "受信したthinking: {count}文字（画面の省略分を含む）",
   "console.generation.response_characters": "受信した回答: {count}文字",
   "console.generation.generated_tokens": "モデルが報告した生成量: {count}トークン",
-  "console.generation.output_token_limit": "設定された生成上限: {count}トークン"
+  "console.generation.output_token_limit": "設定された生成上限: {count}トークン",
+  "event.WorkSessionOpened": "作業セッションを開始",
+  "event.WorkTurnRecorded": "AIによる作業提案を記録",
+  "event.WorkToolRecorded": "作業ツールの結果を記録",
+  "event.WorkResultRecorded": "作業結果を保存",
+  "event.WorkOwnerReplyRecorded": "人間からの回答を記録",
+  "event.ReflectionRecorded": "AIによる整理の来歴を保存",
+  "event.WorkCheckStarted": "候補の検査開始を記録",
+  "event.WorkCheckRecorded": "候補の検査結果を記録",
+  "event.OwnerItemChoiceRecorded": "人間が選んだ関わり方を記録",
+  "event.OwnerExperienceNoteRecorded": "人間のメモを保存",
+  "event.OwnerDesignDecisionRecorded": "人間の設計判断を記録",
+  "event.OwnerDesignDecisionWithdrawn": "人間の設計判断の取り下げを記録"
 }

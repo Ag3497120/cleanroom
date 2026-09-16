@@ -148,6 +148,14 @@ def catalogue(view, notes=()):
     for note in reversed(list(notes)[-100:]):
         items.append(make_item("note", note["body"].splitlines()[0], note["body"], source_ref="owner-note:" + note["id"],
                                run_id=note.get("run_id"), revision=note["body_sha256"]))
+    for turn in state.get("work_turns", []):
+        from .learning_capture import notes_from_event
+        event = {"source_ref": turn["source_ref"], "payload": {"proposal": turn["proposal"]}}
+        refs = {entry["source_ref"] for field in ("work_turns", "work_tools") for entry in state.get(field, [])}
+        refs.update(event["project_id"] + ":" + event["event_id"] for event in state.get("work_trace_events", []))
+        notes, _ = notes_from_event(event, refs)
+        for note in notes:
+            add("learning", note["title"], {**note, "status": "RECORDED_DURING_WORK_NOT_MASTERY"}, turn["source_ref"])
     for row in view.get("human_decisions", []):
         add("decision", row.get("reason") or row.get("choice") or "人間の判断", row, row.get("source_ref"))
     question = view.get("question")
@@ -208,6 +216,27 @@ def _item_preview(item):
 
 def render_owner(view, items, query=""):
     matched = search(items, query)
+    projection = view.get("ownership_projection")
+    if projection is not None and not query:
+        # The TUI renders Owner again for local search. Do not replace the new
+        # Work projection with a legacy receipt or assume an outcome.message.
+        from .agent_projection import notebook_lines
+        lines = notebook_lines(projection, owner=True, learning_limit=3)
+        moments = [item for item in matched if item["kind"] == "learning"]
+        if moments:
+            lines += ["", "DURING WORK / 作業中の説明。本人の理解判定ではありません"]
+            lines += [safe_text(item["label"]) for item in moments[-4:]]
+        notes = [item for item in matched if item["kind"] == "note"]
+        if notes:
+            lines += ["", "LOCAL JOTTINGS / 自分用・自動送信なし"]
+            for item in notes[:5]:
+                lines += [safe_text(item["label"]), safe_text(item["text"], multiline=True)]
+        links = [item for item in matched if item["kind"] in ("request", "candidate")]
+        if links:
+            lines += ["", "NOTEBOOK INDEX / 先頭の文字から参照できます"]
+            lines += [KINDS[item["kind"]] + "  " + safe_text(item["label"]) for item in links[:10]]
+        lines += ["", "空欄のEnterでメモ・検索へ。Agent入力の候補は矢印で選びTabで差し込みます。"]
+        return "\n".join(lines)
     lines = ["OWNER / あなたの指示・判断・理解・メモ", ""]
     if query:
         lines += ["LOCAL SEARCH / " + safe_text(query), f"{len(matched)} items / 外部送信なし", ""]

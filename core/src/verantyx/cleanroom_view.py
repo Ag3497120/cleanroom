@@ -319,6 +319,7 @@ class Reader:
         self.root, self.configuration = Path(root), configuration
         self.store = None
         self.previous = None
+        self.snapshot_token = None
         self.previous_key = None
         self.view = None
 
@@ -329,17 +330,21 @@ class Reader:
         if self.store is None or self.store.connection is None:
             self.close()
             self.store = EventStore(self.root, self.configuration["project"]["id"])
-        snapshot = self.store.project_snapshot()
+        self.snapshot_token, snapshot = self.store.project_snapshot_if_changed(self.snapshot_token)
+        changed = snapshot is not None
+        if not changed:
+            snapshot = self.previous
         from .cleanroom_owner import read_notes
         owner_notes = read_notes(self.root)
         key = (selected, digest(self.configuration), digest(owner_notes))
-        if snapshot != self.previous or key != self.previous_key:
+        if changed or key != self.previous_key:
             self.view = project_view(snapshot, self.configuration, selected, owner_notes)
             self.previous, self.previous_key = snapshot, key
         return {**self.view, "cursor": cursor,
                 "read_at": datetime.now(timezone.utc).isoformat()}
 
     def close(self):
+        self.snapshot_token = None
         if self.store is not None:
             self.store.close()
             self.store = None

@@ -159,6 +159,13 @@ def report(root, configuration, run_id, locale="ja"):
 
 def display(result, locale="ja", command="ownership"):
     from .cli import visible
+    if result.get("format") == "verantyx.owner-projection.v1":
+        from .agent_projection import notebook_lines
+        for line in notebook_lines(result, owner=True):
+            print(visible(line))
+        for receipt in result["evidence_and_unknowns"]["test_receipts"]:
+            print(visible(receipt["label"]) + ": " + receipt["status"])
+        return
     print("\nVera / PROJECT OWNERSHIP")
     print("AIが作業しても、目的・判断・証拠・理解を人間側へ残す記録です。")
     constitution = result["project_constitution"]

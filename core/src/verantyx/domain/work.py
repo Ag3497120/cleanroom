@@ -4,7 +4,7 @@ import hashlib
 
 from jsonschema import Draft202012Validator
 
-from ..agent_schema import WORK_REQUEST, REFLECTION_REQUEST, obj, array, schema, validate_output
+from ..agent_schema import WORK_REQUEST, REFLECTION_REQUEST, REFLECTION_SKILLS_REQUEST, obj, array, schema, validate_output
 from ..errors import LedgerError
 
 EVENT_ACTORS = {
@@ -40,10 +40,23 @@ REFLECTION = obj({
     "source_event_ids": array({"type": "string", "maxLength": 160}, 1000),
     "source_first_revision": {"type": "integer", "minimum": 1},
     "source_last_revision": {"type": "integer", "minimum": 1},
-    "schema_version": {"const": 1},
+    "schema_version": {"enum": [1, 2]},
     "authority": {"const": "PROPOSAL_ONLY"},
     "failure_code": {"type": "string", "maxLength": 160},
-    "proposal": {"anyOf": [schema({"format": REFLECTION_REQUEST}), {"type": "null"}]},
+    "proposal": {"anyOf": [schema({"format": REFLECTION_REQUEST}),
+                             schema({"format": REFLECTION_SKILLS_REQUEST}), {"type": "null"}]},
+})
+
+
+# Optional additive provenance fields keep historical v1 ledgers readable.
+REFLECTION["properties"].update({
+    "trace_version": {"const": 2},
+    "generation_id": {"type": "string", "minLength": 1, "maxLength": 120},
+    "perspective": {"type": "string", "maxLength": 4000},
+    "owner_context": {"type": "object"},
+    "owner_context_sha256": HASH,
+    "skill_context": {"type": "object"},
+    "skill_context_sha256": HASH,
 })
 
 
@@ -77,6 +90,8 @@ def validate_payload(kind, payload):
         "WorkOwnerReplyRecorded": obj({"question_source_ref": STRING, "text": STRING}),
         "ReflectionRecorded": REFLECTION,
     }
+    shapes["WorkTurnRecorded"]["properties"]["learning_profile_sha256"] = HASH
+    shapes["WorkTurnRecorded"]["properties"]["context_snapshot"] = {"type": "object"}
     require(kind in shapes and Draft202012Validator(shapes[kind]).is_valid(payload))
 
 
@@ -96,6 +111,14 @@ def apply_event(state, event):
         require(set(payload["read_scope"]) <= set(state["read_scope"]), "PATH_SCOPE")
         state["work_session"] = {**deepcopy(payload), **stamp}
         state["work_turns"], state["work_tools"], state["work_artifacts"] = [], [], {}
+        continued = payload["context"].get("continued_candidate")
+        if continued:
+            require(continued["run_id"] == payload["previous_run"], "WORK_ARTIFACT_BINDING")
+            require(Draft202012Validator(array(ARTIFACT, 32)).is_valid(continued["artifacts"]),
+                    "WORK_ARTIFACT_BINDING")
+            require(len({row["path"] for row in continued["artifacts"]}) == len(continued["artifacts"]),
+                    "WORK_ARTIFACT_BINDING")
+            state["work_artifacts"] = {row["path"]: deepcopy(row) for row in continued["artifacts"]}
     elif kind == "WorkTurnRecorded":
         require(state.get("work_session") and not state.get("work_result"), "WORK_CONTEXT")
         require(payload["index"] == len(state["work_turns"])
@@ -112,15 +135,31 @@ def apply_event(state, event):
                         for row in state["work_tools"]), "WORK_TOOL_DUPLICATE")
         tool = payload["request"]["tool"]
         if payload["status"] == "SUCCEEDED":
-            require(tool in ("read_file", "write_candidate", "list_files"), "WORK_TOOL_PERMISSION")
+            require(tool in ("read_file", "read_candidate", "write_candidate", "copy_asset", "list_files",
+                             "ask_stack_experience", "suggest_owner_update", "request_model_change",
+                             "consult_child", "read_work_history", "list_mcp_tools",
+                             "call_mcp", "run_project_check"), "WORK_TOOL_PERMISSION")
+            if tool in ("ask_stack_experience", "suggest_owner_update"):
+                require(payload["artifact"] is None and payload["sha256"] is None)
             if tool == "read_file":
                 require(payload["request"]["path"] in state["read_scope"], "PATH_SCOPE")
                 require(payload["sha256"] == hashlib.sha256(payload["text"].encode()).hexdigest())
-            if tool == "write_candidate":
+            if tool == "read_candidate":
+                item = state["work_artifacts"].get(payload["request"]["path"])
+                require(item and item["sha256"] == payload["sha256"]
+                        == hashlib.sha256(payload["text"].encode()).hexdigest(), "WORK_ARTIFACT_BINDING")
+            if tool in ("write_candidate", "copy_asset"):
                 item = payload["artifact"]
-                require(item and item["path"] == payload["request"]["path"]
-                        and item["sha256"] == hashlib.sha256(payload["request"]["text"].encode()).hexdigest())
-                require(item["size"] == len(payload["request"]["text"].encode()))
+                require(item and item["path"] == payload["request"]["path"])
+                if tool == "write_candidate":
+                    require(item["sha256"] == hashlib.sha256(payload["request"]["text"].encode()).hexdigest())
+                    require(item["size"] == len(payload["request"]["text"].encode()))
+                else:
+                    asset = next((row for row in state["work_session"]["context"].get("approved_assets", [])
+                                  if row["path"] == payload["request"]["text"]), None)
+                    require(asset and asset["path"] in state["read_scope"]
+                            and asset["sha256"] == item["sha256"] and asset["size"] == item["size"],
+                            "WORK_ARTIFACT_BINDING")
                 state["work_artifacts"][item["path"]] = deepcopy(item)
             else:
                 require(payload["artifact"] is None)
@@ -157,14 +196,30 @@ def apply_event(state, event):
         # Work events have been accumulated by the reducer, not supplied by AI.
         events = [row for row in state.get("work_trace_events", [])
                   if row["revision"] <= result["revision"]]
+        if payload.get("trace_version") == 2:
+            from ..agent_schema import reflection_events
+            from .codec import digest
+            require(result["revision"] <= payload["source_last_revision"] < event["revision"]
+                    and payload.get("generation_id") == payload["id"]
+                    and "owner_context" in payload
+                    and payload.get("owner_context_sha256") == digest(payload["owner_context"]),
+                    "REFLECTION_TRACE_CHANGED")
+            events = reflection_events(state.get("work_trace_events", []), result["revision"],
+                                       payload["source_last_revision"])
         trace = trace_from_events(events)
         require(payload["trace_sha256"] == trace["sha256"]
                 and payload["source_event_ids"] == [row["source_ref"] for row in trace["events"]]
                 and payload["source_first_revision"] == trace["first_revision"]
                 and payload["source_last_revision"] == trace["last_revision"], "REFLECTION_TRACE_CHANGED")
+        if payload["schema_version"] == 2:
+            from .codec import digest
+            require(payload.get("trace_version") == 2 and "skill_context" in payload
+                    and payload.get("skill_context_sha256") == digest(payload["skill_context"]),
+                    "REFLECTION_TRACE_CHANGED")
         if payload["status"] == "PROPOSED":
             require(payload["proposal"] is not None and not payload["failure_code"])
-            validate_output({"format": REFLECTION_REQUEST, "trace": trace}, payload["proposal"])
+            validate_output({"format": REFLECTION_SKILLS_REQUEST if payload["schema_version"] == 2 else REFLECTION_REQUEST,
+                             "trace": trace, "skill_context": payload.get("skill_context", {})}, payload["proposal"])
         else:
             require(payload["proposal"] is None)
         reflections.append({**deepcopy(payload), **stamp})

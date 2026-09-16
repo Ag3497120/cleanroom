@@ -31,6 +31,7 @@ def parse(argv):
     options, rest = common.parse_known_args(argv)
     parser = Parser(add_help=False, allow_abbrev=False)
     sub = parser.add_subparsers(dest="command", parser_class=Parser)
+    sub.add_parser("desktop-bridge", add_help=False, allow_abbrev=False)
     for command in ("tutorial", "status", "config", "doctor"):
         sub.add_parser(command, add_help=False, allow_abbrev=False)
     watcher = sub.add_parser("watch", add_help=False, allow_abbrev=False)
@@ -54,12 +55,20 @@ def parse(argv):
     starter.add_argument("--include", action="append", default=[])
     starter.add_argument("--plain", action="store_true")
     setup = sub.add_parser("setup", add_help=False, allow_abbrev=False)
+    sections = ("project", "models", "accounts", "codex", "claude", "learning", "language", "workspace", "boundary", "profile", "pace", "skills", "harness", "sandbox", "notebook", "roles")
+    setup.add_argument("section", nargs="?", choices=sections)
+    setup.add_argument("--show", action="store_true")
     setup.add_argument("--non-interactive", action="store_true")
     setup.add_argument("--guided", action="store_true")
     setup.add_argument("--name")
     setup.add_argument("--purpose")
     setup.add_argument("--learning", choices=("manual", "digest", "off"))
     setup.add_argument("--max-items", type=int)
+    settings = sub.add_parser("settings", add_help=False, allow_abbrev=False)
+    settings.add_argument("section", nargs="?", choices=sections)
+    settings.add_argument("--show", action="store_true")
+    models = sub.add_parser("models", aliases=["model"], add_help=False, allow_abbrev=False)
+    models.add_argument("--show", action="store_true")
     for command in ("run", "resume"):
         task = sub.add_parser(command, add_help=False, allow_abbrev=False)
         if command == "run":
@@ -119,10 +128,17 @@ def parse(argv):
     register(sub)
     from .commands_v04 import register as register_v04
     register_v04(sub)
+    from .commands_personal import register as register_personal
+    register_personal(sub)
+    from .commands_notebook_bridge import register as register_connections
+    register_connections(sub)
+    from .commands_toolbox import register as register_toolbox
+    register_toolbox(sub)
     organize = sub.add_parser("organize", help="Organize recorded work with the selected Reflection AI")
     organize.add_argument("run_id")
     organize.add_argument("--adapter", help="Explicit adapter override for this organization run")
     organize.add_argument("--key")
+    organize.add_argument("--perspective", default="", help="A free-form lens; earlier interpretations are retained")
     organize.add_argument("--timeout", type=int, default=120)
     if options.help or options.version:
         return options, argparse.Namespace(command=None)
@@ -132,13 +148,16 @@ def parse(argv):
         # A normal agent accepts `verantyx "do this work"` without requiring
         # users to learn a verb before their first task. Flags still retain the
         # strict command parser and are never guessed as a request.
-        if rest and rest[0] != "watch" and all(not value.startswith("-") for value in rest):
+        if rest and rest[0] not in sub.choices and all(not value.startswith("-") for value in rest):
             args = argparse.Namespace(command="develop", request=" ".join(rest), input=None,
                                       origin_project=None, capture_mode="assisted", key=None, include=[],
                                       target=None, expect=[], reject_json=[], continue_from=None,
                                       assumption=None, allow_contested_handoff=False)
         else:
             raise
+    if args.command == "commands":
+        from .commands_toolbox import catalogue
+        args.catalogue = catalogue(sub)
     if options.tutorial:
         if args.command is not None:
             raise config.ConfigError("ARGUMENTS")
@@ -188,6 +207,23 @@ def help_text(locale, as_json=False):
     from .commands_experience import help_lines
     value = "\n\n".join(text(locale, key) for key in ("slogan", "usage", "commands", "options", "phase"))
     value += "\n\n" + "\n".join(help_lines(locale))
+    value += ("\n\nCleanroom settings (no AI call on opening):"
+              "\n  verantyx setup                 Settings menu"
+              "\n  verantyx setup accounts        Connect an official subscription CLI"
+              "\n  verantyx setup codex           ChatGPT subscription sign-in and model"
+              "\n  verantyx setup claude          Claude subscription sign-in and model"
+              "\n  verantyx setup models          Work AI and Reflection AI"
+              "\n  verantyx models                Shortcut to model settings"
+              "\n  verantyx settings              Settings menu (alias)"
+              "\n  verantyx setup project         Project name and purpose"
+              "\n  verantyx setup learning        Learning display preferences"
+              "\n  verantyx setup language        Notebook language"
+              "\n  verantyx setup workspace       Project location and local data"
+              "\n  verantyx setup boundary        Permission boundaries (read-only)"
+              "\n  verantyx settings --show       Saved settings; no changes"
+              "\n  verantyx settings --json       Saved settings as JSON; no changes"
+              "\n  verantyx setup --guided        Previous detailed setup"
+              "\n  verantyx --project PATH setup  Settings for another project")
     if as_json:
         emit({"schema_version": 1, "command": "help", "locale": locale, "text": value})
     else:
@@ -415,6 +451,9 @@ def main(argv=None):
         if options.version:
             emit({"version": __version__}) if as_json else print(f"verantyx {__version__}")
             return 0
+        if args.command == "desktop-bridge":
+            from .desktop_bridge import serve
+            return serve()
         root = Path(options.project).expanduser().resolve()
         if options.help:
             # Help remains accessible with missing/corrupt project configuration.
@@ -428,10 +467,84 @@ def main(argv=None):
             if not as_json:
                 print("\nCleanroom: verantyx | verantyx \"your task\" | verantyx watch [run-id]")
                 print("Tab/arrow keys/Enter: menu. --plain: scrollback UI. watch --once --json: read-only snapshot.")
+                print("Personal notebook: setup profile | setup pace | my-profile | my-journal | my-portfolio | my-skills")
+                print("My Atlas: verantyx web [--no-open] [--port 4310] | read-only local experience map")
+                print("Unpack: my-learning | my-skills unpack --id ID | summary, full explanation, original sources")
+                print("Sandbox connector: setup sandbox | trusted OSS launcher; isolation not attested")
+                print("My skills: optional board. setup harness: built-in or trusted external proposal adapter.")
+                print("Optional self-reports, not a skill exam. Delegating work never lowers a score.")
+            return 0
+        if args.command == "commands":
+            rows = args.catalogue
+            if args.name:
+                rows = [row for row in rows if row["command"] == args.name]
+                if not rows:
+                    raise LedgerError("ARGUMENTS")
+            if as_json:
+                emit({"ok": True, "commands": rows})
+            else:
+                for row in rows:
+                    print(row["usage"])
+                print("\nUse: verantyx commands NAME --json for argument details.")
+            return 0
+        if args.command == "toolbox":
+            from .commands_toolbox import dispatch as dispatch_toolbox
+            from .authority import command_scope
+            tool_configuration, _ = config.load(root)
+            if tool_configuration is None:
+                raise LedgerError("NOT_CONFIGURED")
+            with command_scope(root, tool_configuration, args):
+                result = dispatch_toolbox(root, tool_configuration, args)
+            emit(result)
+            return 0
+        from .commands_notebook_bridge import COMMANDS as CONNECTION_COMMANDS
+        if args.command in CONNECTION_COMMANDS:
+            connection_configuration, _ = config.load(root)
+            if args.command == "mcp":
+                from .notebook_mcp import serve as serve_mcp
+                return serve_mcp(root, connection_configuration, allow_personal=args.allow_personal,
+                                 allow_import=args.allow_import)
+            from .commands_notebook_bridge import dispatch as dispatch_connections
+            result = dispatch_connections(root, connection_configuration, args)
+            if result.get("status") != "CLOSED":
+                emit(result)
+            return 0
+        from .commands_personal import COMMANDS as PERSONAL_COMMANDS
+        if args.command in PERSONAL_COMMANDS:
+            from .commands_personal import dispatch as dispatch_personal
+            try:
+                personal_configuration, _ = config.load(root)
+            except (config.ConfigError, OSError):
+                personal_configuration = None
+            personal_locale = locale
+            if personal_configuration is not None and not options.lang:
+                personal_locale = personal_configuration.get("ui", {}).get("locale", locale)
+            args.locale_override = bool(options.lang)
+            result = dispatch_personal(root, personal_configuration, args,
+                                       as_json=as_json, locale=personal_locale)
+            if as_json:
+                emit(result)
+            elif result.get("status") != "CLOSED":
+                from .agent_console import terminal_text
+                print(terminal_text(json.dumps(result, ensure_ascii=False, indent=2)))
             return 0
         existing, expected = config.load(root)
         if existing is not None and not options.lang:
             locale = existing["ui"]["locale"]
+        if args.command in ("setup", "settings", "models", "model"):
+            section = getattr(args, "section", None)
+            project_options = args.command == "setup" and (
+                args.guided or args.non_interactive or any(
+                    getattr(args, name, None) is not None
+                    for name in ("name", "purpose", "learning", "max_items")))
+            if project_options:
+                if section not in (None, "project") or args.show:
+                    raise config.ConfigError("ARGUMENTS")
+            else:
+                from .settings_console import run as run_settings
+                return run_settings(root, existing, expected, locale,
+                                    section=section or ("models" if args.command in ("models", "model") else "menu"),
+                                    show=args.show, as_json=as_json)
         if args.command == "watch":
             if existing is None:
                 raise LedgerError("NOT_CONFIGURED")

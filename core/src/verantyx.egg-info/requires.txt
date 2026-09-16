@@ -1,0 +1,8 @@
+jsonschema<5,>=4.25
+cryptography<47,>=41
+psutil<8,>=5.9
+rich<15,>=13.9
+prompt-toolkit<4,>=3.0.48
+
+[mcp]
+mcp<2,>=1.12

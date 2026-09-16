@@ -596,6 +596,11 @@ def _configure_model_api(root, configuration, preset_name):
 
 
 def _settings_hub(root, configuration):
+    from .settings_console import configure
+    return configure(root, configuration)
+
+
+def _legacy_settings_hub(root, configuration):
     from .model_settings import describe
     while True:
         current = describe(configuration)
@@ -734,6 +739,10 @@ def _notebook_intent(value):
         "終了": "quit",
         "終わる": "quit",
         "やめる": "quit",
+        "/profile": "personal-profile",
+        "/journal": "personal-journal",
+        "/next": "personal-next",
+        "/pace": "personal-pace",
         "/history": "history",
         "/learn": "learn",
         "/assets": "assets",
@@ -753,6 +762,10 @@ def _notebook_intent(value):
 
 
 def _notebook_action(root, configuration, mode, action):
+    if action.startswith("personal-"):
+        from .personal_console import menu
+        menu(root, configuration, action.removeprefix("personal-"))
+        return False
     if action in ("project", "review", "notebook", "history", "learn", "assets", "decisions"):
         from .owner_notebook import show_project, open_notebook
         if action == "project":
@@ -811,6 +824,8 @@ def _friendly_error(error):
 
 
 def interact(root, configuration, onboarding=False):
+    from .personal_console import first_open
+    first_open(root, configuration)
     mode = "assisted"
     if onboarding:
         from .cleanroom_notebook import render_first_open

@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="Cleanroom: a private view of the experience you choose to keep.">
+  <title>Cleanroom / My Atlas</title>
+  <link rel="stylesheet" href="/assets/atlas.css">
+  <script type="module" src="/assets/atlas.js"></script>
+</head>
+<body>
+  <a class="skip" href="#main" data-i18n="skip">本文へ</a>
+  <div class="shell">
+    <aside class="rail" aria-label="Notebook">
+      <a class="brand" href="#main"><span class="mark" aria-hidden="true">c.</span><span>cleanroom<span class="edition">PERSONAL NOTEBOOK</span></span></a>
+      <div class="rail-heading">MY ATLAS <span>01</span></div>
+      <nav>
+        <a href="#map"><span>01</span><span data-i18n="navMap">経験の地図</span></a>
+        <a href="#trail"><span>02</span><span data-i18n="navTrail">記録の流れ</span></a>
+        <a href="#bookmarks"><span>03</span><span data-i18n="navBookmarks">次のしおり</span></a>
+        <a href="#unpack"><span>04</span><span data-i18n="unpackNav">紐解きノート</span></a>
+      </nav>
+      <div class="rail-note">
+        <span class="small-cap" data-i18n="notAReportCard">NOT A REPORT CARD</span>
+        <p data-i18n="railNote">全部を覚えなくていい。自分に残したい経験だけを、少しずつ。</p>
+        <div class="privacy"><span class="live-dot" aria-hidden="true"></span><span data-i18n="local">このMacの中だけ</span></div>
+        <span class="rail-meta" data-i18n="readOnly">閲覧のみ / AI呼び出しなし</span>
+      </div>
+    </aside>
+
+    <main id="main">
+      <header class="topbar">
+        <span class="breadcrumb">Notebook <span>/</span> My Atlas</span>
+        <div class="top-actions">
+          <label class="sr-only" for="locale" data-i18n="language">表示言語</label>
+          <select id="locale"><option value="ja">日本語</option><option value="en">English</option></select>
+          <button id="refresh" class="quiet-button" type="button"><span aria-hidden="true">↻</span> <span data-i18n="refresh">読み直す</span></button>
+        </div>
+      </header>
+
+      <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+
+      <section id="map" class="map-section" aria-labelledby="map-title">
+        <div class="section-heading">
+          <div><span class="small-cap blue" data-i18n="chapter">FIELD NOTES / 自分の経験</span>
+            <h1 id="map-title" data-i18n="title">育ててきたもの。</h1>
+            <p class="intro" data-i18n="intro">自分の言葉、使ってみた場面、別のことにつながった経験。その記録を見渡す場所です。</p>
+          </div>
+          <div class="page-stamp"><span data-i18n="edition">記録から描く</span><strong>ATLAS</strong><span>NO SCORES. YOUR PACE.</span></div>
+        </div>
+        <div class="overview" aria-live="polite">
+          <div><strong id="record-count">...</strong><span data-i18n="recordCount">本人が残した記録</span></div>
+          <div><strong id="tech-count">...</strong><span data-i18n="techCount">記録に登場する技術</span></div>
+          <div><strong id="project-count">...</strong><span data-i18n="projectCount">プロジェクト名</span></div>
+          <p data-i18n="countNote">数は記録の量です。能力や習熟度を表していません。</p>
+        </div>
+
+        <form id="filters" class="filters" role="search">
+          <label class="search-label"><span data-i18n="find">記録を探す</span><input id="search" type="search" maxlength="200" autocomplete="off" data-placeholder="searchPlaceholder" placeholder="技術、作ったもの、自分の言葉"></label>
+          <label><span data-i18n="technology">技術</span><select id="technology"><option value="" data-i18n="allTechnologies">すべての技術</option></select></label>
+          <label><span data-i18n="kind">記録のかたち</span><select id="kind"></select></label>
+          <label><span data-i18n="project">プロジェクト</span><select id="project"><option value="" data-i18n="allProjects">すべてのプロジェクト</option></select></label>
+          <button class="primary-button" type="submit" data-i18n="apply">表示する</button>
+        </form>
+        <div class="filter-meta"><span id="active-filter"></span><button id="clear" type="button" class="text-button" data-i18n="clear">絞り込みを戻す</button></div>
+
+        <div class="paper">
+          <div class="paper-header"><span data-i18n="mapHeading">技術と、記録した時間</span><span id="map-range" class="muted"></span></div>
+          <div id="legend" class="legend" aria-label="Record types"></div>
+          <div id="chart" class="chart-scroll" tabindex="0" aria-label="Experience map"></div>
+          <div id="empty" class="empty" hidden>
+            <div class="empty-line" aria-hidden="true"></div>
+            <h2 data-i18n="emptyTitle">ここに、自分の経験が並んでいきます。</h2>
+            <p data-i18n="emptyBody">今日やる必要はありません。CLIのMy skillsで、自分の説明や使った場面を残したときに、この地図へつながります。</p>
+            <code>verantyx my-skills</code>
+          </div>
+          <div class="chart-foot"><span data-i18n="mapHint">点を選ぶと、その記録へ。空いている場所は「できないこと」ではありません。</span><a href="#trail" data-i18n="readAsList">一覧で読む ↓</a></div>
+          <p id="chart-limit" class="footnote"></p>
+        </div>
+      </section>
+
+      <div class="lower-spread">
+        <section id="trail" aria-labelledby="trail-title">
+          <div class="section-head"><div><span class="small-cap" data-i18n="trailEyebrow">YOUR OWN WORDS</span><h2 id="trail-title" data-i18n="trailTitle">記録の流れ</h2></div><span id="trail-count" class="muted"></span></div>
+          <div id="entries" class="entries"></div>
+          <button id="more" class="quiet-button full" type="button" hidden data-i18n="more">前の記録をもう少し</button>
+        </section>
+        <aside id="bookmarks" class="bookmarks" aria-labelledby="bookmark-title">
+          <div class="section-head"><div><span class="small-cap" data-i18n="bookmarkEyebrow">AT YOUR OWN PACE</span><h2 id="bookmark-title" data-i18n="bookmarkTitle">次のしおり</h2></div></div>
+          <p class="muted" data-i18n="bookmarkNote">本人が選んだテーマだけ。期限も、全部を埋める必要もありません。</p>
+          <div id="bookmark-list"></div>
+          <p id="bookmark-more" class="footnote"></p>
+          <div class="shelf">
+            <h3 data-i18n="shelfTitle">任せられることも、資産。</h3>
+            <dl><div><dt data-i18n="aiDrafts">AIが残した手順候補</dt><dd id="draft-count">...</dd></div>
+              <div><dt data-i18n="reference">参照できれば十分</dt><dd id="reference-count">...</dd></div>
+              <div><dt data-i18n="delegate">自分では覚えず任せる</dt><dd id="delegate-count">...</dd></div></dl>
+            <p data-i18n="shelfNote">AIの手順と本人の経験は別の記録です。候補の保存だけで、自動実行は許可されません。</p>
+          </div>
+        </aside>
+      </div>
+      <section id="connections" class="unpack-section" aria-labelledby="connections-title">
+        <div class="section-head"><div><span class="small-cap">CONNECTED NOTES</span><h2 id="connections-title" data-i18n="connectionsTitle">経験と手順のつながり</h2></div></div>
+        <p class="muted" data-i18n="connectionsIntro">AIの手順・作業中の説明・本人の言葉を区別します。つながりは習得率ではありません。</p>
+        <div id="connections-graph" class="connections-graph"></div>
+        <div id="connections-list" class="entries"></div>
+        <a id="obsidian-open" class="quiet-button" hidden data-i18n="openObsidian">Obsidianでノートを開く</a>
+        <p class="footnote"><code>verantyx setup notebook</code> <span data-i18n="connectionsSetup">最初からObsidianで始める設定も選べます。</span></p>
+      </section>
+      <section id="unpack" class="unpack-section" aria-labelledby="unpack-title">
+        <div class="section-head"><div><span class="small-cap">UNPACK / KEEP THE DETAIL</span><h2 id="unpack-title" data-i18n="unpackTitle">自分に必要な分だけ、紐解く。</h2></div></div>
+        <p class="muted" data-i18n="unpackIntro">要約から詳しい解説、保存した作業中の記録まで。読むだけでは習得状態もAIの呼び出しも変わりません。</p>
+        <div id="guides"></div>
+        <button id="more-guides" class="quiet-button" type="button" hidden data-i18n="moreGuides">以前の解説</button>
+        <p class="footnote"><span data-i18n="unpackCommand">新しい解説はCLIのUnpackから。</span> <code>verantyx my-learning</code></p>
+      </section>
+      <footer><span>cleanroom / My Atlas</span><span id="updated"></span><span data-i18n="footer">止めるときはターミナルでCtrl+C。ノートはそのまま残ります。</span></footer>
+    </main>
+  </div>
+
+  <dialog id="detail" aria-labelledby="detail-title">
+    <div class="detail-header"><span class="small-cap" data-i18n="detailEyebrow">ONE RECORD, ITS CONTEXT</span><button id="close-detail" class="quiet-button" type="button" data-i18n="close">閉じる</button></div>
+    <h2 id="detail-title"></h2>
+    <div id="detail-meta" class="detail-meta"></div>
+    <div id="guide-controls" class="guide-controls" hidden>
+      <label for="guide-depth" data-i18n="guideDepth">読む粒度</label>
+      <select id="guide-depth"><option value="summary" data-i18n="guideSummary">要約</option><option value="full" data-i18n="guideFull">詳しい解説</option><option value="sources" data-i18n="guideSources">元の作業記録</option></select>
+    </div>
+    <div id="detail-body"></div>
+    <p class="detail-boundary" data-i18n="detailBoundary">本人の記録とAIの提案を区別しています。ここから習得認定や権限変更は行いません。</p>
+  </dialog>
+</body>
+</html>

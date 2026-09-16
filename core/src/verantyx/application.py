@@ -225,7 +225,7 @@ def _dispatch(root, configuration, args, locale):
     if command == "organize":
         from .agent_runtime import organize
         return organize(root, configuration, args.run_id, adapter=args.adapter,
-                        key=args.key, timeout=args.timeout)
+                        key=args.key, timeout=args.timeout, perspective=getattr(args, "perspective", ""))
     from .commands_v04 import handler
     extension = handler(command)
     if extension is not None:

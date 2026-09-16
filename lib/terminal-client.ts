@@ -3,7 +3,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { hostedSample } from './hosted-sample';
 import { remoteTerminal } from './remote-terminal';
 
-export function mountTerminal(element: HTMLElement, status: (text: string) => void) {
+export function mountTerminal(element: HTMLElement, status: (text: string) => void, basePath = '') {
   element.replaceChildren();
   const terminal = new Terminal({
     fontFamily: 'Menlo, Monaco, "SFMono-Regular", Consolas, monospace', fontSize: 15,
@@ -67,7 +67,7 @@ export function mountTerminal(element: HTMLElement, status: (text: string) => vo
   };
   const connect = async () => {
     status('CLIに接続しています');
-    const settingsResponse = await fetch(new URL('compute-config.json', location.href), {signal:abort.signal,cache:'no-store'});
+    const settingsResponse = await fetch(new URL(basePath + '/compute-config.json', location.origin), {signal:abort.signal,cache:'no-store'});
     if (disposed) return;
     if (settingsResponse.ok) {
       const settings = await settingsResponse.json() as {public_mode?:boolean;gateway_url?:string};

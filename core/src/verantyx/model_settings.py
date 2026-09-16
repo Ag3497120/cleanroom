@@ -59,15 +59,15 @@ def _save_selection(root, configuration, selection):
     return {"ok": True, "selection": selection}
 
 
-def activate_codex(root, configuration):
-    """Use the existing ChatGPT-authenticated Codex adapter in a fresh profile."""
+def activate_codex(root, configuration, model="default", executable=None):
+    """Use native ChatGPT login and the CLI default unless a model was chosen."""
     from .commands_codex import create_configs
     directory = _profile(root, "codex")
-    created = create_configs(directory)
+    created = create_configs(directory, model=model, executable=executable)
     adapters = created["adapters"]
     selection = _selection(
         "codex_subscription",
-        "ChatGPT Codexサブスクリプション / gpt-5.3-codex-spark",
+        "ChatGPT / official Codex CLI / " + ("CLI default" if model == "default" else model),
         adapters["implementation"],
         adapters["verification"],
         root,

@@ -41,7 +41,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
         </nav>
         <div className="settings-sidebar-note">
           <span className="sealed-dot" />
-          <span>Project files remain sealed until you adopt a candidate.</span>
+          <span>Connection preview only. External tools may have their own filesystem permissions.</span>
         </div>
       </aside>
 
@@ -54,8 +54,8 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
         {section === 'overview' && <div className="settings-page overview-page">
           <div className="cleanroom-pledge"><span className="pledge-index">01</span><div><p className="eyebrow">THE CLEANROOM PLEDGE</p><h2>AI may prepare work. You decide what enters the project.</h2><p>Vera keeps project intent, decisions, evidence, failures, and your learning outside a provider-specific conversation.</p></div></div>
           <div className="overview-grid">
-            <article><span>PROJECT</span><strong>Untouched</strong><p>AI proposals do not become project changes by implication.</p></article>
-            <article><span>CANDIDATE NOTEBOOK</span><strong>Isolated</strong><p>Implementation and checks stay separate until an explicit adoption step.</p></article>
+            <article><span>PROJECT</span><strong>Not observed here</strong><p>AI proposals do not become project changes by implication.</p></article>
+            <article><span>CANDIDATE NOTEBOOK</span><strong>Adapter-dependent</strong><p>This preview does not establish an OS sandbox or verify external side effects.</p></article>
             <article><span>HUMAN NOTEBOOK</span><strong>Growing</strong><p>Keep only the decisions and principles worth carrying forward.</p></article>
           </div>
         </div>}
@@ -77,9 +77,9 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
         </div>}
 
         {section === 'boundary' && <div className="settings-page boundary-page">
-          <div className="section-intro"><p className="eyebrow">TRUST BOUNDARY</p><h2>The path stops before your source tree.</h2></div>
-          <div className="boundary-map"><article><span>01</span><strong>Read</strong><p>Vera selects only relevant project-local context.</p></article><div className="boundary-flow" aria-hidden="true"><i /><i /><i /></div><article><span>02</span><strong>Propose</strong><p>External AI writes to a candidate notebook.</p></article><div className="boundary-flow" aria-hidden="true"><i /><i /><i /></div><article className="human-gate"><span>03</span><strong>Adopt</strong><p>A human explicitly decides what returns to Cleanroom.</p></article></div>
-          <div className="boundary-stamp"><span>SEALED</span><p>No model response can convert itself into a human decision, evidence, or accepted project change.</p></div>
+          <div className="section-intro"><p className="eyebrow">TRUST BOUNDARY</p><h2>Permissions depend on the execution boundary.</h2></div>
+          <div className="boundary-map"><article><span>01</span><strong>Read</strong><p>Vera selects only relevant project-local context.</p></article><div className="boundary-flow" aria-hidden="true"><i /><i /><i /></div><article><span>02</span><strong>Propose</strong><p>Built-in work retains candidates; external harness side effects may be unobserved.</p></article><div className="boundary-flow" aria-hidden="true"><i /><i /><i /></div><article className="human-gate"><span>03</span><strong>Adopt</strong><p>A human explicitly decides what returns to Cleanroom.</p></article></div>
+          <div className="boundary-stamp"><span>PROVENANCE</span><p>No model response can convert itself into a human decision, evidence, or accepted project change.</p></div>
         </div>}
 
         {section === 'notebook' && <div className="settings-page notebook-page">

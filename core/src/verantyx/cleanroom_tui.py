@@ -46,6 +46,9 @@ class Cleanroom:
         self.work_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cleanroom-owner")
         self.note_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cleanroom-local-note")
         self.view = None
+        self.personal_view = None
+        self.personal_visible = []
+        self.personal_error = None
         self.busy = False
         self.phase = "idle"
         self.started = None
@@ -289,6 +292,8 @@ class Cleanroom:
                                color_depth=ColorDepth.DEPTH_1_BIT if "NO_COLOR" in os.environ else None,
                                refresh_interval=1 if os.environ.get("VERANTYX_REDUCE_MOTION") == "1" else .3)
         self.owner_input.buffer.on_text_changed += self._owner_text_changed
+        from .pane_scroll import install_pane_scroll
+        install_pane_scroll(self, bindings)
 
     def _owner_page(self):
         return self.focus_name if self.focus_name in ("owner", "evidence", "notebook", "review") else "owner"
@@ -338,7 +343,7 @@ class Cleanroom:
             message = "DBの読み取りを再接続待ち。前回の正常な表示: " + str((self.view or {}).get("read_at") or "まだありません。")
         if self.readonly:
             return " F2 Menu | Alt+1..4 Views | F3 Scroll | F4 Learn | Ctrl+D Close\n " + message
-        return " Empty Enter: Agent > Memo > Search | Tab: reference | F2 Menu | F3 Scroll | F4 Learn\n " + message
+        return " Empty Enter: Agent > Memo > Search | Wheel/PgUp/PgDn: active pane | F2 Menu | F3 Scroll\n " + message
 
     def _input_title(self):
         if self.question is not None:
@@ -370,6 +375,9 @@ class Cleanroom:
     def _owner_items(self):
         from .cleanroom_owner import make_item
         items = list((self.view or {}).get("owner_items", []))
+        if self.personal_view and not self.readonly:
+            from .personal_growth import reference_items
+            items.extend(reference_items(self.personal_view))
         recorded_request = ((self.view or {}).get("state") or {}).get("request", "")
         if self.pending_request and recorded_request.split("\n\n[Owner-selected references:", 1)[0] != self.pending_request:
             item = make_item("request", self.pending_request.splitlines()[0],
@@ -602,11 +610,13 @@ class Cleanroom:
         if self.readonly:
             return True
         self.active_input = "agent"
+        if self.question is not None:
+            # A displayed question owns Enter, including its explicit default.
+            # Input-pane cycling applies only when no question is pending.
+            self._answer(value)
+            return True
         if not value:
             self._cycle_inputs()
-            return True
-        if self.question is not None:
-            self._answer(value)
             return True
         if self.busy:
             self._log("現在の操作を実行中です。入力は下書きとして残しています。", owner=True)
@@ -649,14 +659,30 @@ class Cleanroom:
             ("agent", "Agent / 作業記録を読む"), ("evidence", "Evidence / 検査と限界を見る"),
             ("notebook", "Notebook / 仕事から残ったもの"), ("review", "Review / 判断・採用・学習方針"))]
         if not self.busy:
+            if not self.readonly:
+                choices += [("new-work", "New page / 別の仕事を始める")]
             choices += [("history", "History / 別の仕事を開く")]
             choices += [("growth", "Learn together / 今回持ち帰る理解を開く")]
             if self.readonly:
                 choices += [("follow", "Follow Owner / 人間側と同じ仕事を追う")]
             else:
                 choices += [("review-action", "Review actions / 今必要な操作を選ぶ"),
+                            ("perspectives", "Perspectives / 新しい見方と、これまでの来歴"),
                             ("models", "Models & Providers / AI接続を設定"), ("scope", "Workspace / 送信候補の範囲"),
-                            ("learn", "Learning library / 保存した学習・検査を詳しく見る")]
+                            ("learn", "Learning library / 保存した学習・検査を詳しく見る"),
+                            ("personal-profile", "My profile / 経験と希望。点数は付けません"),
+                            ("personal-journal", "My journal / プロジェクトを越えた日記"),
+                            ("personal-skills", "My skills / AIの手順と、自分が育てる盤面"),
+                            ("work-harness", "Work harness / 内蔵・信頼する外部アダプター"),
+                            ("learning-guides", "Unpack / スキル・技術の学び方と元の記録"),
+                            ("notebook-connections", "Connections / Obsidian・スキル移植・MCP"),
+                            ("learning-moments", "During work / 作業中の説明と自分の記録"),
+                            ("model-roles", "Parent / child models / 親子モデル"),
+                            ("sandbox-backend", "Sandbox backend / 外部OSSランチャー"),
+                            ("personal-next", "Next time / 少しずつ続ける理解・参照・委譲"),
+                            ("personal-pace", "My pace / 提案の量・共有・今日だけ静かに"),
+                            ("personal-talk", "Talk / 相談する・自分の言葉で更新"),
+                            ("personal-portfolio", "Portfolio / 実績として残すものを選ぶ")]
         choices += [("help", "About / 使い方と境界"), ("quit", "Close / この画面を閉じる")]
 
         def selected(value):
@@ -677,6 +703,7 @@ class Cleanroom:
                                 "左下のAgent入力は人間からの依頼、右上のOwner入力はローカルのメモ・検索です。\n"
                                 "空欄のEnterで、Agent → 黄色のメモ → 緑の検索 → Agentへ巡回します。\n"
                                 "Owner項目名の先頭2文字で候補が出ます。矢印で選びTabで参照を差し込みます。\n"
+                                "通常の入力は開いている仕事の続きです。F2のNew pageで別の仕事を始めます。\n"
                                 "F2でメニュー、矢印とEnterで選択できます。\n"
                                 "F3で本文へ移り、矢印やPageUp/Downで読み、Escで入力に戻ります。\n"
                                 "Alt+0で分割、Alt+1..4で各ページへ移動できます。\n"
@@ -720,7 +747,21 @@ class Cleanroom:
             if name == "owner":
                 from .cleanroom_owner import render_owner
                 query = self.owner_input.text if self.owner_mode == "search" else ""
-                body = render_owner(self.view or {}, self._owner_items(), query)
+                all_items = self._owner_items()
+                display_items = all_items if query else [
+                    item for item in all_items if not str(item.get("source_ref", "")).startswith("personal:")]
+                body = render_owner(self.view or {}, display_items, query)
+                if self.personal_view and not query and not self.readonly:
+                    from .personal_growth import panel
+                    lines = panel(self.personal_view)
+                    recent = {row["id"]: row for row in self.personal_view["records"]["lesson"]}
+                    for identity in self.personal_visible:
+                        lesson = recent.get(identity)
+                        if lesson and lesson.get("choice") == "OPEN":
+                            lines += ["", lesson["title"] + " / AIの候補", lesson["minimum_step"]]
+                    body = "\n".join(lines) + "\n\n" + body
+                if self.personal_error and not query:
+                    body += "\n本人用ノートの表示は後で回復できます。作業台帳とは独立しています。"
                 growth_item = self._growth_item(selected_only=True)
                 if growth_item is not None and not query:
                     from .cleanroom_growth import lesson
@@ -772,6 +813,9 @@ class Cleanroom:
 
     def open_growth(self):
         if self.busy or self.question is not None:
+            return
+        if ((self.view or {}).get("state") or {}).get("work_session"):
+            self.start_action("learn", run_id=self.view["run_id"])
             return
         growth = (self.view or {}).get("growth") or {}
         focus = self._growth_item()
@@ -850,6 +894,7 @@ class Cleanroom:
         self.busy, self.phase, self.started = True, "preparing", time.monotonic()
         self.preview = None
         if action in ("work", "work-notebook", "legacy-work"):
+            self.personal_visible = []
             self.pending_request = kwargs["request"]
         basis = deepcopy(self.view)
         self.work_task = asyncio.create_task(self._run_operation(action, basis, kwargs))
@@ -868,6 +913,11 @@ class Cleanroom:
             if isinstance(result, dict):
                 follow_up_ui = result.get("ui_action")
                 self.last_result = result
+                personal = result.get("personal_growth") or {}
+                if personal.get("visible_lessons"):
+                    self.personal_visible = personal["visible_lessons"]
+                    self._transfer("agent_to_owner", "personal:" + self.personal_visible[0],
+                                   "今回の小さな一歩", "自分のペースで持ち帰る")
                 if result.get("run_id"):
                     self.selected = result["run_id"]
                 status = result.get("status", "RECORDED")
@@ -902,10 +952,38 @@ class Cleanroom:
         from .development import run_work
         from .constitution import prepare
         from .model_settings import activate_codex, clear, describe
+        if action == "notebook-connections":
+            from .bridge_console import menu as bridge_menu
+            return bridge_menu(self.root, self.configuration)
+        if action == "learning-moments":
+            from .learning_moments import menu as moments_menu
+            return moments_menu(self.root, self.configuration)
+        if action == "model-roles":
+            from .model_roles import menu as roles_menu
+            return roles_menu(self.root, self.configuration)
+        if action == "learning-guides":
+            from .learning_console import menu as learning_menu
+            return learning_menu(self.root, self.configuration)
+        if action == "sandbox-backend":
+            from .sandbox_backends import menu as sandbox_menu
+            return sandbox_menu(self.root, self.configuration)
+        if action == "work-harness":
+            from .work_harness import menu as harness_menu
+            return harness_menu(self.root, self.configuration)
+        if action.startswith("personal-"):
+            from .personal_console import menu
+            return menu(self.root, self.configuration, action.removeprefix("personal-"))
+        if action == "new-work":
+            return console._new_work(self.root, self.configuration, "assisted")
         if action in ("work", "work-notebook"):
             from .cleanroom_owner import expand_request
             request = expand_request(kwargs["request"], kwargs.get("owner_references", []))
-            return console._new_work(self.root, self.configuration, "assisted", request=request)
+            state = (basis or {}).get("state") or {}
+            previous = ({"run_id": basis["run_id"]} if state.get("work_session") and basis.get("run_id") else None)
+            return console._new_work(self.root, self.configuration, "assisted", previous=previous, request=request)
+        if action == "perspectives":
+            from .provenance_console import perspectives_menu
+            return perspectives_menu(self.root, self.configuration, (basis or {}).get("run_id"))
         if action in ("project", "review", "learn", "assets", "decisions", "notebook", "history"):
             from .owner_notebook import show_project, open_notebook
             if action == "project":
@@ -966,6 +1044,9 @@ class Cleanroom:
             related = [run_id, *(row["run_id"] for row in basis["related_receipts"])]
             return console._dictionary(self.root, self.configuration, run_ids=related)
         if action == "review-action":
+            if basis["state"].get("work_session"):
+                from .owner_notebook import open_notebook
+                return open_notebook(self.root, self.configuration, run_id=run_id)
             chosen = self.choose("Review / この仕事に必要なこと", [
                 ("decision", "Human decision / 判断待ちに回答"), ("preview", "Candidate / 保存された候補内容を見る"),
                 ("verify", "Evidence / 明示した有限条件で検査"), ("learn", "Growth / 学ぶ・参照・委譲"),
@@ -1129,13 +1210,22 @@ class Cleanroom:
                     self.cursor_error = "別端末向けの状態通知が停止しています。台帳の保存状態とは別です。"
             view = await self.loop.run_in_executor(self.read_executor, self.reader.read, self.selected, self.readonly)
             self.view, self.read_error = view, None
+            if not self.readonly:
+                from .personal_growth import ui_state
+                try:
+                    self.personal_view = await self.loop.run_in_executor(
+                        self.read_executor, ui_state, self.personal_view)
+                    self.personal_error = None
+                except Exception as error:
+                    self.personal_error = type(error).__name__
             growth = view.get("growth") or {}
             focus = growth.get("focus")
             identity = (focus["run_id"], focus["id"]) if focus else None
             if not self.view_primed:
                 self.announced_growth = identity
                 self.view_primed = True
-            elif not self.busy and growth.get("automatic_card") and identity != self.announced_growth:
+            elif (not self.busy and growth.get("automatic_card") and identity != self.announced_growth
+                  and not (self.personal_view or {}).get("settings", {}).get("onboarded")):
                 self.announced_growth = identity
                 if focus:
                     self._transfer("agent_to_owner", "learning:" + focus["id"], focus["concept"], "持ち帰る理解")
@@ -1200,6 +1290,8 @@ class Cleanroom:
 
 def interact(root, configuration, onboarding=False, initial_request=None):
     with owner_lock(root):
+        from .personal_console import first_open
+        first_open(root, configuration)
         session = Cleanroom(root, configuration, initial_request=initial_request)
         asyncio.run(session.run())
     print("Cleanroomを閉じました。保存された判断・候補・証拠・理解はローカル台帳に残ります。")

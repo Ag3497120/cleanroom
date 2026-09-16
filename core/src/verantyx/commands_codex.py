@@ -18,7 +18,7 @@ def register(sub):
     usage.add_argument("--directory", required=True)
 
 
-def create_configs(directory, max_calls=4):
+def create_configs(directory, max_calls=4, model=MODEL, executable=None):
     codex_budget.validate_cap(max_calls)
     directory = Path(directory).expanduser()
     if directory.is_symlink():
@@ -27,7 +27,8 @@ def create_configs(directory, max_calls=4):
     files = {role: directory / (role + ".json") for role in ROLES}
     if any(path.exists() or path.is_symlink() for path in (*files.values(), directory / "budget")):
         raise LedgerError("OUTPUT_EXISTS")
-    values = {role: configuration(directory, role, max_calls) for role in ROLES}
+    values = {role: configuration(directory, role, max_calls, model=model, executable=executable)
+              for role in ROLES}
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     # No reopen/reset on failure: partial creation remains visible for review.
     codex_budget.initialize(directory / "budget", max_calls)

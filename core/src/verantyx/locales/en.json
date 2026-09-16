@@ -661,5 +661,17 @@
   "console.generation.thinking_characters": "Received thinking: {count} characters (including text omitted from display)",
   "console.generation.response_characters": "Received answer: {count} characters",
   "console.generation.generated_tokens": "Model-reported generation: {count} tokens",
-  "console.generation.output_token_limit": "Configured generation limit: {count} tokens"
+  "console.generation.output_token_limit": "Configured generation limit: {count} tokens",
+  "event.WorkSessionOpened": "Opened a work session",
+  "event.WorkTurnRecorded": "Recorded an AI work proposal",
+  "event.WorkToolRecorded": "Recorded a work tool result",
+  "event.WorkResultRecorded": "Saved the work result",
+  "event.WorkOwnerReplyRecorded": "Recorded the owner's reply",
+  "event.ReflectionRecorded": "Saved the AI reflection history",
+  "event.WorkCheckStarted": "Recorded the start of a candidate check",
+  "event.WorkCheckRecorded": "Recorded a candidate check result",
+  "event.OwnerItemChoiceRecorded": "Recorded the owner's choice of involvement",
+  "event.OwnerExperienceNoteRecorded": "Saved the owner's note",
+  "event.OwnerDesignDecisionRecorded": "Recorded the owner's design decision",
+  "event.OwnerDesignDecisionWithdrawn": "Recorded withdrawal of the owner's design decision"
 }

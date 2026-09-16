@@ -59,6 +59,10 @@ def select_reflection(root, configuration, mode="same", adapter=None, label=None
 
 
 def selected_work(root, configuration):
+    from .model_roles import selected as role_selected
+    parent = role_selected(root, "parent")
+    if parent is not None:
+        return parent
     selection = configuration.get("runtime", {}).get("model_selection")
     if selection is None:
         from .model_settings import activate_codex
@@ -93,9 +97,31 @@ def identity(adapter):
             "adapter_sha256": hashlib.sha256(raw).hexdigest()}
 
 
-def invoke(root, adapter, request, *, key, timeout=120):
+def invocation_timeout(command, requested=None):
+    """Honor an explicit host cap; otherwise leave time for bridge cleanup.
+
+    Equal inner/outer deadlines killed the bridge before it could save the
+    native result or error. Connection limits, not task keywords, set the cap.
+    """
+    if requested is not None:
+        if type(requested) not in (int, float) or not 0 < requested <= 600:
+            raise LedgerError("ARGUMENTS")
+        return requested
+    for key in ("codex_cli", "claude_cli", "model_api"):
+        if key in command:
+            return min(600, command[key]["timeout"] + 5)
+    return 120
+
+
+def invoke(root, adapter, request, *, key, timeout=None):
     model = identity(adapter)
     command = load_command(adapter)
+    return invoke_prepared(root, model, command, request, key=key, timeout=timeout)
+
+
+def invoke_prepared(root, model, command, request, *, key, timeout=None):
+    """Run a host-selected, already loaded adapter through the same receipt journal."""
+    timeout = invocation_timeout(command, timeout)
     intent = digest({"request": request, "model": model, "executor": command["identity"], "timeout": timeout})
     with InvocationJournal(root, "agent-model-call", key) as journal:
         prior = journal.read("intent")
@@ -108,7 +134,7 @@ def invoke(root, adapter, request, *, key, timeout=120):
             return {"document": validate_output(request, response), "model": model}
         failure = journal.read("failure")
         if failure is not None:
-            raise LedgerError(failure["code"])
+            raise LedgerError(failure["code"], failure.get("details", {}))
         if journal.read("started") is not None:
             raise LedgerError("MODEL_OUTCOME_UNKNOWN")
         require_current_approval_valid()
@@ -121,7 +147,9 @@ def invoke(root, adapter, request, *, key, timeout=120):
             journal.write("response", document)
             return {"document": validate_output(request, document), "model": model}
         except (LedgerError, OSError) as error:
-            journal.write("failure", {"code": getattr(error, "code", "MODEL_CALL_FAILED")})
+            from .model_observation import diagnostic
+            journal.write("failure", {"code": getattr(error, "code", "MODEL_CALL_FAILED"),
+                                      "details": diagnostic(error)["details"]})
             raise
 
 

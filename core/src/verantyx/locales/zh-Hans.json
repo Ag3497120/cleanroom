@@ -661,5 +661,17 @@
   "console.generation.thinking_characters": "收到的 thinking：{count} 个字符（含屏幕省略部分）",
   "console.generation.response_characters": "收到的回答：{count} 个字符",
   "console.generation.generated_tokens": "模型报告的生成量：{count} 个 token",
-  "console.generation.output_token_limit": "配置的生成上限：{count} 个 token"
+  "console.generation.output_token_limit": "配置的生成上限：{count} 个 token",
+  "event.WorkSessionOpened": "已开启工作会话",
+  "event.WorkTurnRecorded": "已记录AI工作提案",
+  "event.WorkToolRecorded": "已记录工作工具结果",
+  "event.WorkResultRecorded": "已保存工作结果",
+  "event.WorkOwnerReplyRecorded": "已记录所有者的答复",
+  "event.ReflectionRecorded": "已保存AI整理历史",
+  "event.WorkCheckStarted": "已记录候选方案检查的开始",
+  "event.WorkCheckRecorded": "已记录候选方案检查结果",
+  "event.OwnerItemChoiceRecorded": "已记录所有者选择的参与方式",
+  "event.OwnerExperienceNoteRecorded": "已保存所有者的笔记",
+  "event.OwnerDesignDecisionRecorded": "已记录所有者的设计决定",
+  "event.OwnerDesignDecisionWithdrawn": "已记录所有者撤回设计决定"
 }

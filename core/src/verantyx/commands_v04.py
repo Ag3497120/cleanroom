@@ -7,12 +7,12 @@ def modules():
     from . import commands_response, commands_context, commands_workflow, commands_capture, commands_work
     from . import commands_experience, commands_codex, commands_keep, commands_skills, commands_skill_policy
     from . import commands_skills_home
-    from . import commands_partner, commands_constitution, commands_ownership
+    from . import commands_partner, commands_constitution, commands_ownership, commands_notebook
     return (commands_jobs, commands_verification, commands_governance, commands_learning, commands_integration,
             commands_authority, commands_oracles, commands_command_effects, commands_connections, commands_response, commands_context,
             commands_workflow, commands_capture, commands_work, commands_experience, commands_codex, commands_keep,
             commands_skills, commands_skill_policy, commands_skills_home, commands_partner, commands_constitution,
-            commands_ownership)
+            commands_ownership, commands_notebook)
 
 
 def register(sub):
