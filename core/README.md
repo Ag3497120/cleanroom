@@ -135,7 +135,7 @@ CLIの起動はそのままにし、終了はCtrl+Cです。記録の追加はMy
 **ソース版の機能です。公開済み配布物への収録、実モデルの学習効果、全環境での動作を保証するものではありません。**
 
 操作ガイド: [日本語](docs/OPERATIONS.ja.md) / [English](docs/OPERATIONS.en.md)。
-背景資料: [日本語原文と英語版の資料庫](docs/origins/README.md)。X投稿とAIとの議論の本文は提供待ちです。
+背景資料: [提供された日本語引用・英訳・議論の資料庫](docs/origins/README.md)。着想の出典は、作者から提示された[@2020_hiraのX投稿](https://x.com/2020_hira/status/2096386633595867274)です。引用、作者自身の設計、AIとの議論を分けて記録しています。投稿者による推奨や協力を意味しません。
 
 リポジトリ: [Ag3497120/cleanroom](https://github.com/Ag3497120/cleanroom)。起動コマンドは引き続きverantyxです。
 

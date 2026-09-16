@@ -114,7 +114,7 @@ Work results and AI reflection are independent. Different models can offer diffe
 
 Owner notes and search do not call AI. Explicitly inserted references enter the request's send scope. Private project and personal records are not meant for public GitHub commits.
 
-The name comes from the author's personal image of a cleanroom: an isolated sanctuary for human judgment. It is a metaphor, not an OS sandbox guarantee. This independently developed, non-commercially motivated project grew from a Japanese X post and the author's own unease about losing the experience of making things with AI.
+The name comes from the author's personal image of a cleanroom: an isolated sanctuary for human judgment. It is a metaphor, not an OS sandbox guarantee. This independently developed, non-commercially motivated project grew from [a Japanese X post by @2020_hira](https://x.com/2020_hira/status/2096386633595867274) and the author's own unease about losing the experience of making things with AI.
 
 MIT licensed. Personal, non-commercial motivation is not a restriction on commercial use.
 
@@ -215,7 +215,7 @@ AIの手順と本人のスキルは別です。生成・移植された手順は
 
 Ownerのメモと検索だけではAIを呼びません。依頼に明示的に挿入した参照は送信範囲に入ります。プロジェクトと個人の私的な記録を公開GitHubへ追加しないでください。
 
-私は日本語の「クリーンルーム」に、隔離された聖域のような、人間の判断が守られる場所を重ねて、このプロジェクトを始めました。これは私自身の比喩であり、一般的な語義やOSの隔離保証ではありません。ある日本語のX投稿と、AIを使う最近の開発や将来への不安が出発点です。
+私は日本語の「クリーンルーム」に、隔離された聖域のような、人間の判断が守られる場所を重ねて、このプロジェクトを始めました。これは私自身の比喩であり、一般的な語義やOSの隔離保証ではありません。[@2020_hiraの日本語のX投稿](https://x.com/2020_hira/status/2096386633595867274)と、AIを使う最近の開発や将来への不安が出発点です。
 
 MITライセンス。個人的な非商用の制作動機は、商用利用を制限するものではありません。
 
@@ -316,7 +316,7 @@ AI 的操作步骤与人的技能是两回事。导入或生成的步骤先作�
 
 Owner 备忘和搜索本身不会调用 AI。主动插入请求的引用会进入发送范围。不要将项目或个人私密记录提交到公共 GitHub。
 
-作者把 cleanroom 想象成保护人类判断的隔离空间。这是个人的比喻，不是操作系统沙箱保证。项目源于一篇日语 X 帖子，以及作者对 AI 开发中经验流失和未来的担忧。
+作者把 cleanroom 想象成保护人类判断的隔离空间。这是个人的比喻，不是操作系统沙箱保证。项目源于[@2020_hira 的日语 X 帖子](https://x.com/2020_hira/status/2096386633595867274)，以及作者对 AI 开发中经验流失和未来的担忧。
 
 MIT 许可证。个人的非商业创作动机不限制商业使用。
 
@@ -417,7 +417,7 @@ AI의 절차와 본인의 스킬은 별개입니다. 생성하거나 가져온 �
 
 Owner 메모와 검색만으로 AI를 호출하지 않습니다. 요청에 직접 넣은 참조는 전송 범위에 포함됩니다. 개인 기록과 프로젝트 비공개 기록을 공개 GitHub에 올리지 마세요.
 
-작성자는 cleanroom을 인간의 판단이 보호되는 격리된 공간으로 생각했습니다. 개인적인 비유이지 OS 샌드박스 보장이 아닙니다. 일본어 X 게시물과 AI 개발 과정에서 경험을 잃을지 모른다는 걱정에서 시작했습니다.
+작성자는 cleanroom을 인간의 판단이 보호되는 격리된 공간으로 생각했습니다. 개인적인 비유이지 OS 샌드박스 보장이 아닙니다. [@2020_hira의 일본어 X 게시물](https://x.com/2020_hira/status/2096386633595867274)과 AI 개발 과정에서 경험을 잃을지 모른다는 걱정에서 시작했습니다.
 
 MIT 라이선스. 개인의 비상업적 제작 동기는 상업적 이용을 제한하지 않습니다.
 
@@ -518,7 +518,7 @@ El resultado del trabajo y la reflexión de la IA son independientes. Los modelo
 
 Las notas y búsquedas Owner no llaman a la IA. Las referencias que insertas expresamente forman parte del contenido a enviar. No publiques registros privados del proyecto ni personales en GitHub.
 
-El nombre nace de la imagen personal del autor: un espacio aislado que protege el juicio humano. Es una metáfora, no una garantía de aislamiento del sistema operativo. El proyecto surgió de una publicación japonesa en X y de sus inquietudes sobre desarrollar con IA y perder experiencia.
+El nombre nace de la imagen personal del autor: un espacio aislado que protege el juicio humano. Es una metáfora, no una garantía de aislamiento del sistema operativo. El proyecto surgió de [una publicación japonesa de @2020_hira en X](https://x.com/2020_hira/status/2096386633595867274) y de sus inquietudes sobre desarrollar con IA y perder experiencia.
 
 Licencia MIT. La motivación personal no comercial no limita el uso comercial.
 

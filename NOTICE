@@ -10,11 +10,20 @@ Provider services, model weights and account subscriptions have their own
 terms. The Cleanroom MIT License does not grant access to those services.
 
 The supplied Japanese X-post excerpt and its editorial translation under
-core/docs/origins are third-party quotation material, not a grant of MIT
-rights to the original post. Its author, URL and publication date have not
-yet been supplied. Do not infer permission to reuse the original post from
-the repository license. A rights holder may request attribution or removal
-via a minimal issue, without posting private information.
+core/docs/origins are quotation material, not a grant of MIT rights to the
+original post. The project author identifies its source as the X post by
+@2020_hira:
+https://x.com/2020_hira/status/2096386633595867274
+
+The source link was supplied on 2026-09-16. The original publication date
+and exact correspondence of the supplied quotation to the live post were
+not independently verified during this update. The English version is an
+editorial translation, not an official translation.
+
+Attribution does not imply the post author's endorsement, collaboration
+or participation in Cleanroom. Do not infer permission to reuse the original
+post from the repository license. A rights holder may request attribution
+or removal via a minimal issue, without posting private information.
 
 The author's personal, non-commercial motivation is a statement of intent,
 not a restriction on the commercial use permitted by MIT.
