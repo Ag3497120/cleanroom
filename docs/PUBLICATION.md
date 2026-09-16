@@ -5,7 +5,7 @@
 Repository: **Ag3497120/cleanroom**. Product: **Cleanroom**. Kernel: **Vera**. Existing CLI: **verantyx**.
 Historical requests embedded in supplied notes are documentation sources, not new rename or implementation instructions.
 
-The README, five operating guides, logo, programmed CLI recording, author page, and landing page describe an evolving source preview. There is no new claim of full MVP readiness or of completing all live-model evaluations.
+The README, five operating guides, logo, programmed CLI recording, and landing page describe an evolving source preview. There is no new claim of full MVP readiness or of completing all live-model evaluations.
 
 ## GitHub About
 
@@ -51,3 +51,7 @@ Five-language guides are human-readable translations of the same operating model
 [Pi](https://pi.dev/) informed the logo / installation / demonstration sequence. [M3E Canvas](https://lnkiai.github.io/m3e-canvas/) demonstrated two useful AI entry points: a direct API call and a copyable external-agent instruction. Cleanroom implements its own interface and keeps credentials ephemeral rather than copying another site's retention behavior.
 
 API payload references: [Ollama chat](https://docs.ollama.com/api/chat), [OpenAI chat API](https://developers.openai.com/api/reference/resources/chat), [official Codex authentication](https://learn.chatgpt.com/docs/auth). Provider availability and browser CORS are not guaranteed by the UI.
+
+## Profile presentation
+
+The personal profile is published only on [verantyx.ai](https://verantyx.ai/author/), not as a README biography, repository profile document, or GitHub Pages profile. Development origins remain project documentation. This presentation change does not rewrite Git history.

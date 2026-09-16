@@ -30,7 +30,7 @@ verantyx setup accounts
 verantyx
 ```
 
-[Operating guide](core/docs/OPERATIONS.en.md) · [Commands](#commands) · [About the author](docs/AUTHOR.md#en)
+[Operating guide](core/docs/OPERATIONS.en.md) · [Commands](#commands)
 
 ### Split CLI: Agent on the left, Owner on the right
 
@@ -80,7 +80,7 @@ verantyx setup accounts
 verantyx
 ```
 
-[操作ガイド](core/docs/OPERATIONS.ja.md) · [Commands](#commands) · [本西航大とは](docs/AUTHOR.md#ja)
+[操作ガイド](core/docs/OPERATIONS.ja.md) · [Commands](#commands)
 
 ### 左はAgent、右はOwner
 
@@ -130,7 +130,7 @@ verantyx setup accounts
 verantyx
 ```
 
-[操作指南](core/docs/OPERATIONS.zh-Hans.md) · [Commands](#commands) · [关于作者](docs/AUTHOR.md#zh-Hans)
+[操作指南](core/docs/OPERATIONS.zh-Hans.md) · [Commands](#commands)
 
 ### 左侧 Agent，右侧 Owner
 
@@ -180,7 +180,7 @@ verantyx setup accounts
 verantyx
 ```
 
-[사용 안내](core/docs/OPERATIONS.ko.md) · [Commands](#commands) · [작성자 소개](docs/AUTHOR.md#ko)
+[사용 안내](core/docs/OPERATIONS.ko.md) · [Commands](#commands)
 
 ### 왼쪽 Agent, 오른쪽 Owner
 
@@ -230,7 +230,7 @@ verantyx setup accounts
 verantyx
 ```
 
-[Guía de uso](core/docs/OPERATIONS.es.md) · [Commands](#commands) · [Sobre el autor](docs/AUTHOR.md#es)
+[Guía de uso](core/docs/OPERATIONS.es.md) · [Commands](#commands)
 
 ### Agent a la izquierda, Owner a la derecha
 

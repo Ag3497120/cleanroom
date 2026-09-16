@@ -14,7 +14,7 @@ if(!existsSync(entry))throw new Error('Build with the same PAGES_BASE_PATH befor
 rmSync('dist/pages',{recursive:true,force:true});mkdirSync('dist/pages',{recursive:true});
 cpSync(source,'dist/pages',{recursive:true});cpSync(entry,'dist/pages/index.html');
 // Keep slash-based navigation working with Vinext's flat HTML export.
-for(const route of ['author','terminal']){
+for(const route of ['terminal']){
   const page=resolve('dist/pages',route+'.html');
   if(existsSync(page)){
     const directory=resolve('dist/pages',route);
