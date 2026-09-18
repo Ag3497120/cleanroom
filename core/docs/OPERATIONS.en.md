@@ -8,7 +8,7 @@ Cleanroom is a collaborative development workspace powered by the Vera Kernel. A
 
 Start with `verantyx setup`: a new installation starts in English, then guides and choices follow the language you select. The first-exit tutorial is simulated. Type `verantyx` inside it to leave practice and begin the real CLI, or use `/done` to leave the practice view. The terminal-size warning does not block you.
 
-At 120 columns × 28 rows, the CLI uses two equal-width panes; at 80 × 48 it can stack them. Smaller windows show the active pane without blocking work. Empty Enter still cycles Agent → Memo → Search. Terminal font size belongs to your terminal application; the browser demo has its own text-size controls.
+At 120 columns × 28 rows, the CLI gives about 70% of the width to Agent and 30% to Owner; at 80 × 48 it can stack them. Smaller windows show the active pane without blocking work. Empty Enter still cycles Agent → Memo → Search. Terminal font size belongs to your terminal application; the browser demo has its own text-size controls.
 
 ### While work continues
 
@@ -82,7 +82,7 @@ Empty Enter moves to the yellow Owner memo, then the green Owner search, then ba
 
 Type at least the first two characters of an Owner item, choose with Up/Down, and press Tab to insert that reference. Enter selects an open suggestion, rather than sending the task.
 
-At 120 columns × 28 rows, the CLI uses two equal-width panes; at 80 × 48 it can stack them. Smaller windows show the active pane without blocking work. Empty Enter still cycles Agent → Memo → Search. Terminal font size belongs to your terminal application; the browser demo has its own text-size controls.
+At 120 columns × 28 rows, the CLI gives about 70% of the width to Agent and 30% to Owner; at 80 × 48 it can stack them. Smaller windows show the active pane without blocking work. Empty Enter still cycles Agent → Memo → Search. Terminal font size belongs to your terminal application; the browser demo has its own text-size controls.
 
 ```sh
 VERANTYX_REDUCE_MOTION=1 verantyx

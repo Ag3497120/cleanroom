@@ -48,6 +48,14 @@ verantyx
 
 [Operating guide](core/docs/OPERATIONS.en.md) · [Commands](#commands) · [Try the workspace](https://verantyx.ai/#play)
 
+Built-in, key-free Web search: `verantyx toolbox setup-web --yes`, then
+`verantyx web-search "your query"` or `/web your query` inside the CLI.
+On macOS, add `--browser` during setup to enable native WebKit page reading.
+[Web tools and selection controls (日本語)](core/docs/WEB_AND_READING.ja.md) ·
+[Model efficiency and activity UI (日本語)](core/docs/MODEL_EFFICIENCY.ja.md) ·
+[Owner history, context and local models (日本語)](core/docs/OWNER_HISTORY_AND_CONTEXT.ja.md) ·
+[Pre-change caching audit (日本語)](core/docs/MODEL_CACHE_AUDIT.ja.md)
+
 <a id="first-minute"></a>
 
 Already installed? In your checkout, activate the virtual environment, run `git pull --ff-only` and `python -m pip install -e ./core`, then restart the CLI. Reinstalling dependencies is needed for the new PDF/image support.
@@ -91,7 +99,7 @@ You do not have to wait for the project to be finished.
 
 [Live learning, sessions, permissions and storage](docs/live-learning-and-sessions.md) · [Conversation and change review](docs/conversation-and-change-review.md)
 
-At 120 columns × 28 rows, the CLI uses two equal-width panes; at 80 × 48 it can stack them. Smaller windows show the active pane without blocking work. Empty Enter still cycles Agent → Memo → Search. Terminal font size belongs to your terminal application; the browser demo has its own text-size controls.
+At 120 columns × 28 rows, the CLI gives about 70% of the width to Agent and 30% to Owner; at 80 × 48 it can stack them. Smaller windows show the active pane without blocking work. Empty Enter still cycles Agent → Memo → Search. Terminal font size belongs to your terminal application; the browser demo has its own text-size controls.
 
 ### What makes it different
 
@@ -207,7 +215,7 @@ Agentの`/verantyx new`はAgentの会話だけを新しくします。OwnerのCl
 
 [作業中の学び・セッション・権限・保存](docs/live-learning-and-sessions.md) · [会話表示と差分確認](docs/conversation-and-change-review.md)
 
-横120文字 × 縦28行以上では同じ幅の左右2欄、横80文字 × 縦48行以上では上下表示、それより小さい場合は操作中の欄を表示します。サイズを理由に進行を止めません。空EnterによるAgent → メモ → 検索は同じです。端末の文字サイズは端末アプリ側で変更し、Web体験版では画面内の文字サイズボタンも使えます。
+横120文字 × 縦28行以上ではAgent約70%・Owner約30%の左右2欄、横80文字 × 縦48行以上では上下表示、それより小さい場合は操作中の欄を表示します。サイズを理由に進行を止めません。空EnterによるAgent → メモ → 検索は同じです。端末の文字サイズは端末アプリ側で変更し、Web体験版では画面内の文字サイズボタンも使えます。
 
 ### 何が違うのか
 
@@ -323,7 +331,7 @@ Agent中的`/verantyx new`只新建Agent对话。Owner的Cleanroom独立命名�
 
 [工作中的学习、会话、权限与存储](docs/live-learning-and-sessions.md) · [对话与差异审查](docs/conversation-and-change-review.md)
 
-120列 × 28行起使用等宽左右面板；80列 × 48行起可上下排列；更小时显示活动面板，不阻止使用。空Enter仍在Agent、备忘和搜索之间循环。终端字体由终端应用设置；浏览器体验版提供字号按钮。
+120列 × 28行起，Agent约占70%宽度，Owner约占30%；80列 × 48行起可上下排列；更小时显示活动面板，不阻止使用。空Enter仍在Agent、备忘和搜索之间循环。终端字体由终端应用设置；浏览器体验版提供字号按钮。
 
 ### 不同之处
 
@@ -439,7 +447,7 @@ Agent의 `/verantyx new`는 Agent 대화만 새로 만듭니다. Owner Cleanroom
 
 [작업 중 학습, 세션, 권한과 저장](docs/live-learning-and-sessions.md) · [대화와 변경 검토](docs/conversation-and-change-review.md)
 
-120열 × 28행부터 같은 너비의 좌우 패널을, 80열 × 48행부터 상하 패널을 사용합니다. 더 작으면 활성 패널만 보여주며 진행을 막지 않습니다. 빈 Enter 전환은 같습니다. 터미널 글꼴 크기는 터미널 앱에서, 웹 체험 글자 크기는 화면 버튼에서 바꿉니다.
+120열 × 28행부터 Agent 약 70%, Owner 약 30% 너비의 좌우 패널을, 80열 × 48행부터 상하 패널을 사용합니다. 더 작으면 활성 패널만 보여주며 진행을 막지 않습니다. 빈 Enter 전환은 같습니다. 터미널 글꼴 크기는 터미널 앱에서, 웹 체험 글자 크기는 화면 버튼에서 바꿉니다.
 
 ### 무엇이 다른가
 
@@ -555,7 +563,7 @@ No hace falta esperar a que el proyecto termine.
 
 [Aprendizaje en curso, sesiones, permisos y almacenamiento](docs/live-learning-and-sessions.md) · [Conversación y revisión de cambios](docs/conversation-and-change-review.md)
 
-Desde 120 columnas × 28 filas se usan paneles iguales en paralelo; desde 80 × 48 pueden apilarse. Las ventanas menores muestran el panel activo sin bloquear. Enter vacío sigue recorriendo Agent, Nota y Buscar. La fuente del terminal se cambia en su aplicación; el ensayo web tiene controles de tamaño.
+Desde 120 columnas × 28 filas, Agent ocupa aproximadamente el 70% del ancho y Owner el 30%; desde 80 × 48 pueden apilarse. Las ventanas menores muestran el panel activo sin bloquear. Enter vacío sigue recorriendo Agent, Nota y Buscar. La fuente del terminal se cambia en su aplicación; el ensayo web tiene controles de tamaño.
 
 ### Qué lo hace distinto
 

@@ -20,6 +20,8 @@ from verantyx.adapters.observations import read_document
 from verantyx.domain.codec import canonical, decode, digest
 from verantyx.errors import LedgerError
 from verantyx.model_api import _validate_output
+from verantyx.native_session import NativeSession, STATE_ENV, transport_directory
+from verantyx.prompt_cache import FRAGMENT_INSTRUCTION
 
 FORMAT = "verantyx.codex-cli.v1"
 PROVIDER = "chatgpt_codex"
@@ -43,7 +45,7 @@ INSTRUCTIONS = (
     "Preserve the contract's fixed identifiers, sources, revisions and uncertainty. "
     "Never grant permission, activate rules, claim execution, or assert human mastery. "
     "Do not add markdown fences, explanations outside the envelope, or status/authority overrides. "
-    "This is generated model output and will be validated by the host."
+    "This is generated model output and will be validated by the host." + FRAGMENT_INSTRUCTION
 )
 
 
@@ -95,26 +97,29 @@ def command_for(path, value):
     """Return the trusted command mapping consumed by the existing BoundedProcess."""
     validate_config(value)
     command = {"argv": [sys.executable, str(Path(__file__).resolve()), "--config", str(Path(path).resolve()),
-                        "--sha256", digest(value)], "cwd": None, "env": _environment(),
+                        "--sha256", digest(value)], "cwd": None,
+               "env": {**_environment(), STATE_ENV: transport_directory(path)},
                "codex_cli": deepcopy(value)}
     command["identity"] = digest(command)
     return command
 
 
-def _argv(config, schema_path):
+def _argv(config, schema_path, resume_id=None, persist=False):
     # Built-in provider IDs are reserved; do not redefine openai to change retries.
     # Our budget bounds CLI invocations, not the provider's internal transport retries.
     overrides = ('forced_login_method="chatgpt"', 'model_provider="openai"',
-                 "features.shell_tool=false", "features.multi_agent=false", 'web_search="disabled"')
+                 "features.shell_tool=false", "features.multi_agent=false", 'web_search="disabled"',
+                 'sandbox_mode="read-only"')
     if config["reasoning_effort"] != "auto":
         overrides += ('model_reasoning_effort="' + config["reasoning_effort"] + '"',)
     if config.get("context_window"):
         overrides += ("model_context_window=" + str(config["context_window"]),)
-    return [config["executable"], "exec", "--ignore-user-config",
+    return [config["executable"], "exec", *(["resume"] if resume_id else []), "--ignore-user-config",
             *[part for setting in overrides for part in ("-c", setting)],
-            "--json", "--ephemeral", "--skip-git-repo-check",
+            "--json", *([] if persist else ["--ephemeral"]), "--skip-git-repo-check",
             *([] if config["model"] == "default" else ["--model", config["model"]]),
-            "--sandbox", "read-only", "--output-schema", str(schema_path), "-"]
+            *([] if resume_id else ["--sandbox", "read-only"]),
+            "--output-schema", str(schema_path), *([resume_id] if resume_id else []), "-"]
 
 
 def _provider_failure(row):
@@ -148,7 +153,8 @@ def _invoke(config, value, on_usage):
     """Bound both pipes and wall time; the child stays in the outer adapter group."""
     from verantyx.codex_wire import EDITOR, PLAN, RESPONSE, editor_contract, plan_contract, response_contract, validate_envelope
     from verantyx.codex_wire import is_skill_proposal, skill_proposal_contract
-    from verantyx.agent_schema import FORMATS as AGENT_FORMATS, native_contract
+    from verantyx.agent_schema import FORMATS as AGENT_FORMATS
+    from verantyx.prompt_cache import native_contract
     from verantyx.attachment_inputs import image_inputs, public_request
     images = image_inputs(value)
     public_value = public_request(value)
@@ -166,20 +172,17 @@ def _invoke(config, value, on_usage):
     if agent_wire or editor_wire or plan_wire or response_wire or skill_wire:
         instructions = instructions.replace("one string field document containing the complete contract JSON",
                                             "one object field document containing the complete contract JSON")
-    prompt = (instructions + "\nConfigured role: " + config["role"] + "\nREQUEST_JSON\n" + canonical(wire_value)).encode()
-    with tempfile.TemporaryDirectory(prefix="verantyx-codex-") as directory:
+    with NativeSession(config, wire_value, envelope_schema, instructions) as session, tempfile.TemporaryDirectory(prefix="verantyx-codex-") as directory:
         directory = Path(directory)
-        schema_path = directory / "envelope.json"
-        schema_path.write_text(canonical(envelope_schema), encoding="utf-8")
-        cwd = directory / "empty"
-        cwd.mkdir()
-        arguments = _argv(config, schema_path)
-        for index, item in enumerate(images):
+        prompt = (("" if session.resume_id else instructions + "\nConfigured role: " + config["role"] + "\n")
+                  + session.prompt()).encode()
+        arguments = _argv(config, session.schema_file(), session.resume_id, session.path is not None)
+        for index, item in enumerate([] if session.resume_id else images):
             import base64
             image_path = directory / ("attachment-" + str(index) + ".jpg")
             image_path.write_bytes(base64.b64decode(item["data"], validate=True))
             arguments[-1:-1] = ["--image", str(image_path)]
-        process = subprocess.Popen(arguments, cwd=cwd, env=_environment(), shell=False,
+        process = subprocess.Popen(arguments, cwd=session.cwd, env=_environment(), shell=False,
                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                    bufsize=0, start_new_session=False)
         selector = selectors.DefaultSelector()
@@ -215,6 +218,10 @@ def _invoke(config, value, on_usage):
                     final = item["text"]
             else:
                 _require(kind == "thread.started", "CODEX_EVENT_TYPE", "BRIDGE_PROTOCOL")
+                _require(session.thread_id is None and
+                         (session.resume_id is None or row.get("thread_id") == session.resume_id),
+                         "CODEX_SESSION_MISMATCH", "BRIDGE_PROTOCOL")
+                session.thread_id = row.get("thread_id")
 
         try:
             for name in ("stdin", "stdout", "stderr"):
@@ -261,8 +268,11 @@ def _invoke(config, value, on_usage):
             _require(completed and final is not None, "CODEX_INCOMPLETE_TURN", "BRIDGE_OUTCOME_UNKNOWN")
             envelope = decode(final, config["max_response_bytes"])
             if agent_wire or editor_wire or plan_wire or response_wire or skill_wire:
-                return validate_envelope(envelope, envelope_schema, editor=editor_wire,
-                                         source_request=value if plan_wire or editor_wire else None)
+                result = validate_envelope(envelope, envelope_schema, editor=editor_wire,
+                                           source_request=value if plan_wire or editor_wire else None)
+                _validated(value, result, config["max_response_bytes"])
+                session.complete()
+                return result
             _require(type(envelope) is dict and set(envelope) == {"document"}
                      and type(envelope["document"]) is str, "CODEX_ENVELOPE", "BRIDGE_PROTOCOL")
             return decode(envelope["document"], config["max_response_bytes"])
@@ -298,10 +308,15 @@ def request(config, value):
         _require(digest(document) == ticket["output_sha256"], "CODEX_CACHE_HASH", "BRIDGE_PROTOCOL")
         result = _validated(value, document, config["max_response_bytes"])
         _require(canonical(result) == canonical(document), "CODEX_CACHE_CHANGED", "BRIDGE_PROTOCOL")
+        from verantyx.model_usage import publish
+        publish(config, value, tokens={}, source="local_cache")
         return result
     try:
-        document = _invoke(config, value, lambda tokens: codex_budget.record_usage(
-            config["budget_directory"], ticket["id"], tokens))
+        def usage(tokens):
+            codex_budget.record_usage(config["budget_directory"], ticket["id"], tokens)
+            from verantyx.model_usage import publish
+            publish(config, value, {"usage": tokens})
+        document = _invoke(config, value, usage)
         result = _validated(value, document, config["max_response_bytes"])
         codex_budget.finish(config["budget_directory"], ticket["id"], status="SUCCEEDED", output=result)
         return result

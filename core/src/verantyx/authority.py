@@ -31,7 +31,7 @@ READ_COMMANDS.add("skills-stack")
 READ_COMMANDS.update({"skills-policies", "skills-route", "skills", "skills-report"})
 READ_COMMANDS.add("shared-context")
 READ_COMMANDS.add("sovereignty")
-READ_COMMANDS.update(("recap", "codex-usage"))
+READ_COMMANDS.update(("recap", "codex-usage", "model-usage", "context-usage"))
 READ_COMMANDS.update(("constitution", "constitution-gaps"))
 READ_COMMANDS.update({"ownership", "notebook", "perspectives"})
 CANDIDATE_COMMANDS = {"run", "resume"}

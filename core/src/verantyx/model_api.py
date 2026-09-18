@@ -25,6 +25,7 @@ if __package__ in (None, ""):
 from verantyx.adapters.observations import read_document
 from verantyx.domain.codec import canonical, decode, digest
 from verantyx.errors import LedgerError
+from verantyx.prompt_cache import FRAGMENT_INSTRUCTION
 
 FORMAT = "verantyx.model-api.v1"
 PROVIDERS = ("openai", "anthropic", "gemini", "ollama", "openai_compatible")
@@ -36,7 +37,7 @@ INSTRUCTIONS = ("Return exactly one JSON object matching output_contract and the
                 "Host tool_requests permitted by output_contract are proposals, not native tool execution; "
                 "use write_candidate for implementation files when offered. Do not "
                 "approve decisions, grant permissions, assert human mastery, or execute actions. "
-                "Do not include markdown fences or any text outside the JSON object.")
+                "Do not include markdown fences or any text outside the JSON object." + FRAGMENT_INSTRUCTION)
 
 
 def _require(condition, reason, code="BRIDGE_CONFIG"):
@@ -64,7 +65,8 @@ def validate_config(value):
     _require(key is None or (key not in reserved and not key.startswith(("PYTHON", "LD_", "DYLD_"))), "MODEL_API_KEY_ENV")
     _require(value["provider"] in ("ollama", "openai_compatible") or key is not None, "MODEL_API_KEY_ENV")
     _require(type(value["allow_loopback_http"]) is bool, "MODEL_API_TLS")
-    for name, low, high in (("timeout", 1, 600), ("max_output_tokens", 1, 65536), ("max_response_bytes", 1024, 4 * 1024 * 1024)):
+    from verantyx.model_timeouts import is_local, LOCAL_MAXIMUM
+    for name, low, high in (("timeout", 1, LOCAL_MAXIMUM if is_local(value) else 600), ("max_output_tokens", 1, 65536), ("max_response_bytes", 1024, 4 * 1024 * 1024)):
         _require(type(value[name]) is int and low <= value[name] <= high, "MODEL_API_LIMIT")
     endpoint = value["endpoint"]
     _require(type(endpoint) is str and 1 <= len(endpoint) <= 2048 and endpoint.isascii()
@@ -109,6 +111,8 @@ def command_for(path, value):
                         "--sha256", digest(value)], "cwd": None,
                "env": {key: os.environ[key] for key in BASE_ENV if key in os.environ},
                "deferred_env": [value["key_env"]] if value["key_env"] else [], "model_api": value}
+    from verantyx.native_session import STATE_ENV, transport_directory
+    command["env"][STATE_ENV] = transport_directory(path)
     command["identity"] = digest(command)
     return command
 
@@ -135,7 +139,9 @@ def payload(config, value):
     from verantyx.attachment_inputs import image_inputs, public_request
     images = image_inputs(value)
     value = public_request(value)
-    prompt = canonical(value)
+    from verantyx.prompt_cache import fragments, cache_key, explicit_openai
+    parts, boundaries = fragments(value)
+    prompt = "".join(parts)
     image_urls = ["data:" + item["mime_type"] + ";base64," + item["data"] for item in images]
     chat_content = ([{"type": "text", "text": prompt}] +
                     [{"type": "image_url", "image_url": {"url": url}} for url in image_urls]) if images else prompt
@@ -149,16 +155,24 @@ def payload(config, value):
                     "messages": [{"role": "system", "content": INSTRUCTIONS}, {"role": "user", "content": chat_content}],
                     "max_tokens": tokens, "response_format": {"type": "json_object"}, "stream": False,
                     **({"reasoning_effort": config["reasoning_effort"]} if config.get("reasoning_effort") else {})}
+        explicit = provider == "openai" and explicit_openai(model)
+        content = [{"type": "input_text", "text": part,
+                    **({"prompt_cache_breakpoint": {"mode": "explicit"}}
+                       if explicit and index in boundaries else {})} for index, part in enumerate(parts)]
         return {"model": model, "instructions": INSTRUCTIONS,
-                "input": [{"role": "user", "content": [{"type": "input_text", "text": prompt}] +
-                          [{"type": "input_image", "image_url": url} for url in image_urls]}] if images else prompt,
+                "input": [{"role": "user", "content": content +
+                          [{"type": "input_image", "image_url": url} for url in image_urls]}],
                 "max_output_tokens": tokens, "text": {"format": {"type": "json_object"}},
                 "stream": False, "store": False, "tools": [],
+                **({"prompt_cache_key": cache_key(value)} if provider == "openai" else {}),
+                **({"prompt_cache_options": {"mode": "explicit"}} if explicit else {}),
                 **({"reasoning": {"effort": config["reasoning_effort"]}} if config.get("reasoning_effort") else {})}
     if provider == "anthropic":
         return {"model": model, "system": INSTRUCTIONS, "messages": [{"role": "user", "content":
-                ([{"type": "text", "text": prompt}] + [{"type": "image", "source": {
-                    "type": "base64", "media_type": item["mime_type"], "data": item["data"]}} for item in images]) if images else prompt}],
+                ([{"type": "text", "text": part,
+                   **({"cache_control": {"type": "ephemeral"}} if index in boundaries else {})}
+                  for index, part in enumerate(parts)] + [{"type": "image", "source": {
+                    "type": "base64", "media_type": item["mime_type"], "data": item["data"]}} for item in images])}],
                 "max_tokens": tokens, "stream": False,
                 **({"output_config": {"effort": config["reasoning_effort"]}, "thinking": {"type": "adaptive"}}
                    if config.get("reasoning_effort") else {})}
@@ -448,6 +462,9 @@ def request(config, value, observer=None):
         if streaming:
             from verantyx.ollama_stream import read
             result = read(response, config, deadline, connection, secret, observer)
+            _require(not secret or not _contains_secret(result, secret), "MODEL_API_CREDENTIAL_ECHO", "BRIDGE_PROTOCOL")
+            from verantyx.model_usage import publish
+            publish(config, value, result, observer=observer)
             document = decode(response_text(config["provider"], result), 256 * 1024)
             _require(not secret or not _contains_secret(document, secret), "MODEL_API_CREDENTIAL_ECHO", "BRIDGE_PROTOCOL")
             return _validate_output(value, document)
@@ -467,6 +484,8 @@ def request(config, value, observer=None):
         # Reject echoed credentials, including JSON-escaped text, before stdout
         # can become a retained proposal. No provider error body is returned.
         _require(not secret or not _contains_secret(result, secret), "MODEL_API_CREDENTIAL_ECHO", "BRIDGE_PROTOCOL")
+        from verantyx.model_usage import publish
+        publish(config, value, result, observer=observer)
         text = response_text(config["provider"], result)
         document = decode(text, 256 * 1024)
         _require(not secret or not _contains_secret(document, secret), "MODEL_API_CREDENTIAL_ECHO", "BRIDGE_PROTOCOL")

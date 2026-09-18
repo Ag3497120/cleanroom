@@ -424,16 +424,73 @@ async function loadPage(append) {
     }
   }
 }
+function structuredValue(value, depth = 0) {
+  if (value === null || value === undefined) return node("span", "muted", "—");
+  if (typeof value !== "object") return node("p", "record-value", value);
+  if (depth > 8) return node("pre", "source-record", JSON.stringify(value, null, 2));
+  if (Array.isArray(value)) {
+    const list = node("ol", "record-list");
+    for (const item of value) {
+      const row = node("li");
+      row.append(structuredValue(item, depth + 1));
+      list.append(row);
+    }
+    return list;
+  }
+  const list = node("dl", "record-fields");
+  for (const [key, item] of Object.entries(value)) {
+    const description = node("dd");
+    description.append(structuredValue(item, depth + 1));
+    list.append(node("dt", "", t(key)), description);
+  }
+  return list;
+}
 function detailSection(title, value, isList = false) {
   if (value === undefined || value === null || value === "" || (Array.isArray(value) && !value.length)) return;
   $("detail-body").append(node("h3", "detail-label", title));
-  if (isList && Array.isArray(value)) {
-    const list = node("ul", "detail-note");
-    value.forEach((item) => list.append(node("li", "", typeof item === "string" ? item : JSON.stringify(item))));
-    $("detail-body").append(list);
-  } else {
-    $("detail-body").append(node("p", "detail-note", typeof value === "string" ? value : JSON.stringify(value)));
+  $("detail-body").append(structuredValue(value));
+}
+function renderSourceRecords(data) {
+  const container = $("detail-body");
+  const label = node("label", "detail-label", locale === "ja" ? "この資料内を検索" : "Search these sources");
+  const input = node("input", "source-search");
+  input.type = "search";
+  label.append(input);
+  const status = node("p", "footnote");
+  status.setAttribute("role", "status");
+  const list = node("div", "source-cards");
+  container.append(label, status, list);
+  const cards = [];
+  const groups = [[t("guideSources"), data.source_events],
+    [locale === "ja" ? "当時の個人記録の参照状態" : "Personal context at the time", data.profile_snapshot_history],
+    [locale === "ja" ? "出典の確認が必要な記録" : "Records needing source review", data.rejected_notes]];
+  for (const [title, records] of groups) {
+    for (const [index, record] of (Array.isArray(records) ? records : records ? [records] : []).entries()) {
+      const card = node("details", "source-card");
+      const identity = record.source_ref || record.event_id || record.id || "";
+      card.append(node("summary", "", `${title} ${index + 1} · ${record.type || record.kind || ""} ${identity}`));
+      card.append(structuredValue(record));
+      list.append(card);
+      cards.push({card, text: JSON.stringify(record).normalize("NFKC").toLocaleLowerCase()});
+    }
   }
+  function filter() {
+    const terms = input.value.normalize("NFKC").toLocaleLowerCase().trim().split(/\s+/).filter(Boolean);
+    let count = 0;
+    for (const {card, text} of cards) {
+      card.hidden = !terms.every((term) => text.includes(term));
+      if (!card.hidden) count++;
+      if (terms.length && !card.hidden) card.open = true;
+    }
+    status.textContent = `${count} / ${cards.length} ${t("recordsUnit")}`;
+  }
+  input.addEventListener("input", filter);
+  filter();
+  const raw = node("details", "source-card");
+  raw.append(node("summary", "", locale === "ja" ? "元のJSONを確認" : "Inspect original JSON"),
+    node("pre", "source-record", JSON.stringify({events: data.source_events,
+      profile_snapshot_history: data.profile_snapshot_history, rejected_notes: data.rejected_notes}, null, 2)));
+  container.append(raw);
 }
 function renderDetail(data) {
   $("detail-title").textContent = data.title;
@@ -454,7 +511,8 @@ function renderDetail(data) {
     }
   }
   if (data.provenance) {
-    const labels = { project_name: "project", run_id: "sourceRun", source_ref: "sourceRef", model: "model", definition_sha256: "definitionHash" };
+    const labels = { project_name: "project", run_id: "sourceRun", source_ref: "sourceRef", model: "model", definition_sha256: "definitionHash",
+      work_key: "sourceRun", source_event_ids: "source_event_ids", previous_id: "sourceRef" };
     for (const [key, label] of Object.entries(labels)) detailSection(t(label), data.provenance[key]);
   }
   if (data.skill_id) {
@@ -523,10 +581,8 @@ function renderGuide(data) {
   $("detail-body").replaceChildren();
   if (data.status !== "PROPOSED") $("detail-body").append(node("p", "detail-note", t("guidePending")));
   if (data.detail === "sources") {
-    $("detail-body").append(node("pre", "source-record", JSON.stringify({
-      events: data.source_events, profile_snapshot_history: data.profile_snapshot_history,
-      rejected_notes: data.rejected_notes,
-    }, null, 2)));
+    renderSourceRecords(data);
+    detailSection(t("definitionHash"), data.source_sha256);
     return;
   }
   if (data.detail === "summary") {

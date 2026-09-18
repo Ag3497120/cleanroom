@@ -8,7 +8,7 @@ Cleanroom es un espacio de desarrollo colaborativo basado en Vera Kernel. Aunque
 
 Una instalación nueva de `verantyx setup` empieza en inglés. Al elegir idioma cambian las guías y explicaciones. Al salir por primera vez se ofrece un tutorial simulado. Escribe `verantyx` dentro para pasar a la CLI real, o `/done` para salir de la práctica. El aviso de tamaño no bloquea.
 
-Desde 120 columnas × 28 filas se usan paneles iguales en paralelo; desde 80 × 48 pueden apilarse. Las ventanas menores muestran el panel activo sin bloquear. Enter vacío sigue recorriendo Agent, Nota y Buscar. La fuente del terminal se cambia en su aplicación; el ensayo web tiene controles de tamaño.
+Desde 120 columnas × 28 filas, Agent ocupa aproximadamente el 70% del ancho y Owner el 30%; desde 80 × 48 pueden apilarse. Las ventanas menores muestran el panel activo sin bloquear. Enter vacío sigue recorriendo Agent, Nota y Buscar. La fuente del terminal se cambia en su aplicación; el ensayo web tiene controles de tamaño.
 
 ### Comprender mientras el trabajo sigue
 
@@ -82,7 +82,7 @@ Pulsa Enter con el campo vacío: Agent → nota Owner amarilla → búsqueda Own
 
 Escribe al menos los dos primeros caracteres de un elemento Owner, elige con las flechas y pulsa Tab para insertar la referencia. Con sugerencias abiertas, Enter selecciona; no envía la petición.
 
-Desde 120 columnas × 28 filas se usan paneles iguales en paralelo; desde 80 × 48 pueden apilarse. Las ventanas menores muestran el panel activo sin bloquear. Enter vacío sigue recorriendo Agent, Nota y Buscar. La fuente del terminal se cambia en su aplicación; el ensayo web tiene controles de tamaño.
+Desde 120 columnas × 28 filas, Agent ocupa aproximadamente el 70% del ancho y Owner el 30%; desde 80 × 48 pueden apilarse. Las ventanas menores muestran el panel activo sin bloquear. Enter vacío sigue recorriendo Agent, Nota y Buscar. La fuente del terminal se cambia en su aplicación; el ensayo web tiene controles de tamaño.
 
 ```sh
 VERANTYX_REDUCE_MOTION=1 verantyx

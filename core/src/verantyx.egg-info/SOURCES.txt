@@ -132,6 +132,7 @@ src/verantyx/presentation.py
 src/verantyx/progress.py
 src/verantyx/provenance.py
 src/verantyx/provenance_console.py
+src/verantyx/reading_ux.py
 src/verantyx/recovery_bundle.py
 src/verantyx/recovery_replay.py
 src/verantyx/responses.py

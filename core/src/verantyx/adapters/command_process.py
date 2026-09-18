@@ -61,7 +61,8 @@ def load_command(path):
 
 class BoundedProcess:
     def __init__(self, command, *, timeout=60, max_output=262144):
-        if (type(timeout) not in (int, float) or not 0 < timeout <= 600 or
+        from ..model_timeouts import process_limit
+        if (type(timeout) not in (int, float) or not 0 < timeout <= process_limit(command) or
                 type(max_output) is not int or not 1024 <= max_output <= 4 * 1024 * 1024):
             raise LedgerError("ARGUMENTS")
         self.command, self.timeout, self.max_output = command, timeout, max_output
@@ -189,14 +190,14 @@ class BoundedProcess:
             if self.command.get("model_api") and value.get("shared_context"):
                 from ..model_api import payload
                 payload(self.command["model_api"], value)  # Pure size/context preflight before sending any input.
-            if self.command.get("model_api"):
+            if any(self.command.get(key) for key in ("model_api", "codex_cli", "claude_cli")):
                 from ..progress import model_event
                 from ..model_api import generation_policy
-                cfg = self.command["model_api"]
+                cfg = next(self.command[key] for key in ("model_api", "codex_cli", "claude_cli") if self.command.get(key))
                 policy = generation_policy(cfg, value) if cfg["provider"] == "ollama" else {}
                 model_event({"kind": "start", "model": cfg["provider"] + " / " + cfg["model"],
                              "thinking": policy.get("thinking", False), "reserve_output": policy.get("reserve_output", False),
-                             "output_tokens": cfg["max_output_tokens"], "timeout": min(self.timeout, cfg["timeout"])})
+                             "output_tokens": cfg.get("max_output_tokens"), "timeout": min(self.timeout, cfg["timeout"])})
             self.send(canonical(value).encode("utf-8") + b"\n")
         while True:
             if not self.pending and not self.stdin_closed:

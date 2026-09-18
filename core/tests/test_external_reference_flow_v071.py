@@ -142,6 +142,10 @@ class WorkflowReferenceTests(unittest.TestCase):
             body = payload({'provider': provider, 'model': 'fixture', 'max_output_tokens': 1024}, sent)
             raw = (body['input'] if provider == 'openai' else body['messages'][0]['content'] if provider == 'anthropic'
                    else body['contents'][0]['parts'][0]['text'] if provider == 'gemini' else body['prompt'])
+            if provider == 'openai':
+                raw = ''.join(block['text'] for message in raw for block in message['content'] if block['type'] == 'input_text')
+            elif provider == 'anthropic':
+                raw = ''.join(block['text'] for block in raw if block['type'] == 'text')
             self.assertEqual(json.loads(raw)['context']['external_captures'], sent['context']['external_captures'])
             if provider == 'ollama':
                 prop = body['format']['properties']['steps']['items']['properties']

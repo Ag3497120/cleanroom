@@ -126,7 +126,7 @@ def request_switch(root, configuration, role, alias):
     return {**choose(root, configuration, role, alias, confirmed=True), "status": "OWNER_SELECTED"}
 
 
-def consult(root, configuration, question, *, source_request, key, timeout=90):
+def consult(root, configuration, question, *, source_request, key, timeout=None):
     adapter = selected(root, "child")
     if adapter is None:
         raise LedgerError("CHILD_MODEL_NOT_SELECTED")

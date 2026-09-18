@@ -207,6 +207,17 @@ details h3 { margin-top: 18px; margin-bottom: 6px; font-size: 14px; }
 .guide-controls { display: flex; align-items: center; gap: 12px; margin: 18px 0; }
 .guide-controls[hidden] { display: none; }
 .source-record { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; background: #f2f5f7; padding: 14px; max-height: 65vh; overflow: auto; }
+.source-card { border: 1px solid var(--line); border-radius: 5px; padding: 12px 16px; margin: 12px 0; }
+.source-card summary { cursor: pointer; font-size: 13px; overflow-wrap: anywhere; line-height: 1.7; }
+.source-card[open] summary { margin-bottom: 16px; }
+.source-search { display: block; width: 100%; margin-top: 8px; padding: 9px; font: inherit; }
+.record-fields { margin: 8px 0; border-left: 2px solid var(--line); padding-left: 14px; }
+.record-fields dt { font-size: 12px; color: var(--muted); margin-top: 14px; }
+.record-fields dd { margin: 4px 0 12px; }
+.record-value { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.8; margin: 5px 0; }
+.record-list { padding-left: 24px; }
+.record-list > li { margin: 10px 0; }
+.record-fields .record-fields { padding-left: 10px; }
 .resource-link { display: block; overflow-wrap: anywhere; color: #225978; margin-top: 10px; }
 
 .connections-graph { overflow-x: auto; margin: 1.5rem 0; border: 1px solid var(--line, #d8d4c8); border-radius: 12px; background: repeating-linear-gradient(0deg, transparent, transparent 31px, #dedbc640 32px); }

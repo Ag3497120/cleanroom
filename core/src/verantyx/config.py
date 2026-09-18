@@ -107,7 +107,7 @@ def defaults(root: Path, locale: str) -> dict:
         "project": {"id": str(uuid.uuid4()), "name": root.name or "verantyx", "purpose": ""},
         "ui": {"locale": locale},
         "learning": {"mode": "digest", "max_items": 1},
-        "runtime": {"backend": "none"},
+        "runtime": {"backend": "none", "reflection": {"mode": "off", "adapter": None, "label": "Manual"}},
         "telemetry": {"enabled": False},
     }
 

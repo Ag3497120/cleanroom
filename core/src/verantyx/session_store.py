@@ -256,6 +256,32 @@ def memo_rows(root, room=None, *, limit=200, offset=0, query=""):
     return memo_page(root, room, limit=limit, offset=offset, query=query)["rows"]
 
 
+def memo_index(root, room, *, query=""):
+    """Search the complete room without loading every memo into the UI."""
+    from .cleanroom_owner import normal
+    terms = normal(query).split()
+    with connection() as store:
+        if store is None or not store.execute("SELECT 1 FROM sqlite_master WHERE name='cr_memo'").fetchone():
+            return []
+        store.create_function("owner_matches", 1, lambda body: int(all(term in normal(body) for term in terms)))
+        rows = store.execute("SELECT id,created_at FROM cr_memo WHERE root=? AND room=? AND owner_matches(body)",
+                             (root_key(root), room)).fetchall()
+    return [{"id": row[0], "created_at": row[1]} for row in rows]
+
+
+def memos_by_id(root, room, identities):
+    if not identities:
+        return []
+    if len(identities) > 200:
+        raise LedgerError("ARGUMENTS")
+    with connection() as store:
+        if store is None:
+            return []
+        rows = store.execute("SELECT id,body,created_at,run_id FROM cr_memo WHERE root=? AND room=? AND id IN ("
+                             + ",".join("?" for _ in identities) + ")", [root_key(root), room, *identities]).fetchall()
+    return [dict(zip(("id", "body", "created_at", "run_id"), row)) for row in rows]
+
+
 def preferences(root):
     with db() as store:
         row = store.execute("SELECT document FROM cr_preference WHERE root=?", (root_key(root),)).fetchone()

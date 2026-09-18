@@ -207,11 +207,13 @@ def _candidate(root, run_id, turn, request, raw=None):
 
 def _tool(root, run_id, turn, request, scope, artifacts, assets=(), *, human_request="", work_identity="",
           configuration=None, model_context=None):
+    from .progress import report
     result = {"turn_index": turn, "request": deepcopy(request), "status": "REFUSED",
               "reason": "", "text": "", "sha256": None, "artifact": None}
     try:
         require_current_approval_valid()
         name = request["tool"]
+        report("tool:" + str(name) + ":" + str(request.get("path", "")))
         if name in ("list_mcp_tools", "call_mcp", "run_project_check"):
             from .work_tools import current
             result["text"] = canonical(current().execute(request, run_id=run_id, turn=turn,
@@ -509,6 +511,8 @@ def run_work(root, configuration, *, request, key=None, include=(), continue_fro
                 from .session_context import prepare as prepare_context
                 value, compact_metadata = prepare_context(root, configuration, value)
                 value["output_schema"] = schema(value)
+                from .context_meter import capture as capture_context
+                capture_context(root, value, compact_metadata)
                 try:
                     if compact_metadata.get("over_budget") or len(canonical(value).encode()) > 450000:
                         raise LedgerError("WORK_CONTEXT_LIMIT", {"next": "verantyx compact / verantyx setup context"})

@@ -322,6 +322,7 @@ class Reader:
         self.snapshot_token = None
         self.previous_key = None
         self.view = None
+        self.owner_history_cache = {}
 
     def read(self, selected=None, follow=False, room_id=None, empty=False, note_offset=0, note_query=""):
         cursor = read_cursor(self.root) if follow else None
@@ -353,13 +354,19 @@ class Reader:
             owner_notes = list(reversed(list(reversed(legacy))[note_offset:note_offset + 200]))
         if empty:
             selected = "__empty_agent_session__"
-        key = (selected, digest(self.configuration), digest(owner_notes), note_offset, note_query)
+        key = (selected, room_id, digest(self.configuration), digest(owner_notes), note_offset, note_query)
         if changed or key != self.previous_key:
             self.view = project_view(snapshot, self.configuration, selected, owner_notes)
             self.previous, self.previous_key = snapshot, key
+        archive = None
+        if room_id and not follow:
+            from .owner_archive import page
+            archive = page(self.root, room_id, snapshot, offset=note_offset, query=note_query,
+                           history_cache=self.owner_history_cache)
         return {**self.view, **({"run_id": None} if empty else {}), "cursor": cursor,
                 "read_at": datetime.now(timezone.utc).isoformat(),
-                "memo_page": {key: value for key, value in note_page.items() if key != "rows"}}
+                "memo_page": {key: value for key, value in (archive or note_page).items() if key not in ("rows", "items")},
+                **({"owner_items": archive["items"], "owner_archive": True} if archive is not None else {})}
 
     def close(self):
         self.snapshot_token = None

@@ -95,6 +95,8 @@ def read(response, config, deadline, connection, secret, observer):
               "done": True, "done_reason": final.get("done_reason")}
     if type(final.get("eval_count")) is int and 0 <= final["eval_count"] <= 65536:
         result["eval_count"] = final["eval_count"]
+    if type(final.get("prompt_eval_count")) is int and 0 <= final["prompt_eval_count"] <= 2000000:
+        result["prompt_eval_count"] = final["prompt_eval_count"]
     _require(not secret or not _contains_secret(result, secret), "MODEL_API_CREDENTIAL_ECHO", "BRIDGE_PROTOCOL")
     notify(observer, {"kind": "output", "characters": characters})
     return result

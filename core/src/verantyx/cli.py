@@ -497,7 +497,7 @@ def main(argv=None):
                     print(row["usage"])
                 print("\nUse: verantyx commands NAME --json for argument details.")
             return 0
-        if args.command == "toolbox":
+        if args.command in ("toolbox", "web-search", "web-fetch", "model-usage", "context-usage"):
             from .commands_toolbox import dispatch as dispatch_toolbox
             from .authority import command_scope
             tool_configuration, _ = config.load(root)
@@ -506,7 +506,7 @@ def main(argv=None):
             with command_scope(root, tool_configuration, args):
                 result = dispatch_toolbox(root, tool_configuration, args)
             emit(result)
-            return 0
+            return 1 if args.command in ("web-search", "web-fetch") and not result.get("ok") else 0
         from .commands_notebook_bridge import COMMANDS as CONNECTION_COMMANDS
         if args.command in CONNECTION_COMMANDS:
             connection_configuration, _ = config.load(root)

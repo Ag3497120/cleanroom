@@ -1,6 +1,6 @@
 """Closed connection CLI: explicit model endpoints, voluntary feedback, inert transport."""
 
-COMMANDS = {"model-api-config", "model-api-check", "service-definition", "archive-send", "archive-fetch",
+COMMANDS = {"model-api-config", "model-api-check", "model-timeout", "service-definition", "archive-send", "archive-fetch",
             "learn-model-material", "learn-model-assess", "service-register", "service-stop", "service-worker",
             "notification-packet", "notification-authorize", "notification-send"}
 
@@ -10,13 +10,15 @@ def accepts(command):
 
 
 def register(sub):
+    timeout = sub.add_parser("model-timeout", add_help=False, allow_abbrev=False)
+    timeout.add_argument("seconds", type=int, nargs="?")
     model = sub.add_parser("model-api-config", add_help=False, allow_abbrev=False)
     model.add_argument("--provider", required=True, choices=("openai", "anthropic", "gemini", "ollama", "openai_compatible"))
     for name in ("model", "endpoint", "output"):
         model.add_argument("--" + name, required=True)
     model.add_argument("--key-env")
     model.add_argument("--allow-loopback-http", action="store_true")
-    model.add_argument("--timeout", type=int, default=30)
+    model.add_argument("--timeout", type=int)
     model.add_argument("--max-output-tokens", type=int, default=4096)
     model.add_argument("--max-response-bytes", type=int, default=262144)
     model.add_argument("--context-window", type=int)
@@ -71,6 +73,9 @@ def register(sub):
 
 def dispatch(root, configuration, args, locale):
     from . import connections_v05 as connect
+    if args.command == "model-timeout":
+        from .model_preferences import set_timeout
+        return set_timeout(root, configuration, args.seconds)
     if args.command == "model-api-config":
         return connect.configure_model(root, provider=args.provider, model=args.model, endpoint=args.endpoint,
                                        key_env=args.key_env, output=args.output, allow_loopback_http=args.allow_loopback_http,

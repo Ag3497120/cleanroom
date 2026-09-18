@@ -291,7 +291,7 @@ else:
         for scenario, code in (("tool", "BRIDGE_PROTOCOL"), ("incomplete", "BRIDGE_OUTCOME_UNKNOWN"),
                                ("overflow", "BRIDGE_OUTPUT_LIMIT"), ("timeout", "BRIDGE_TIMEOUT")):
             cfg = {**self.cfg, "executable": str(self.fake_executable(scenario=scenario)),
-                   "timeout": 1, "max_response_bytes": 1024}
+                   "timeout": 1 if scenario == "timeout" else 10, "max_response_bytes": 1024}
             with self.assertRaises(LedgerError) as error:
                 codex_cli.request(cfg, REQUEST)
             self.assertEqual(error.exception.code, code)

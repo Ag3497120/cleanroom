@@ -9,7 +9,7 @@ description = "A local-first collaborative development foundation that preserves
 readme = "README.md"
 license = {file = "LICENSE"}
 requires-python = ">=3.11"
-dependencies = ["jsonschema>=4.25,<5", "cryptography>=41,<47", "psutil>=5.9,<8", "rich>=13.9,<15", "prompt-toolkit>=3.0.48,<4", "Pillow>=11,<13", "pypdfium2>=5,<6"]
+dependencies = ["jsonschema>=4.25,<5", "cryptography>=41,<47", "psutil>=5.9,<8", "rich>=13.9,<15", "prompt-toolkit>=3.0.48,<4", "Pillow>=11,<13", "pypdfium2>=5,<6", "certifi>=2024.2.2", "mcp>=1.12,<2"]
 
 [project.optional-dependencies]
 mcp = ["mcp>=1.12,<2"]
@@ -25,4 +25,4 @@ verantyx = "verantyx.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-verantyx = ["locales/*.json", "schemas/*.json", "policies/*.cross", "cross-build.json", "web/atlas/*.html", "web/atlas/*.css", "web/atlas/*.js"]
+verantyx = ["locales/*.json", "schemas/*.json", "policies/*.cross", "cross-build.json", "web/atlas/*.html", "web/atlas/*.css", "web/atlas/*.js", "browser/*.swift", "browser/NOTICE.txt"]

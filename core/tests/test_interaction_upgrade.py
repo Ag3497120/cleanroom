@@ -135,6 +135,28 @@ class LiveInputTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.actions, [("inline-settings", {"section": "models"})])
         self.assertEqual(self.session.recall.entries["agent"], [])
 
+    async def test_owner_search_enter_and_f8_jump_without_losing_neighboring_lines(self):
+        from verantyx.cleanroom_owner import make_item
+        self.session.owner_view = {"owner_archive": True, "owner_items": [
+            make_item("note", "Original", "before\nneedle one\nbetween\nneedle two\nafter")]}
+        self.session.active_input = "owner"
+        self.session.owner_mode = "search"
+        self.session._focus_input()
+        await self.keys("needle\r")
+        area = self.session.areas["owner"]
+        self.assertIn("▶ 2 │ needle one", area.buffer.document.current_line)
+        self.assertIn("between", area.text)
+        await self.keys("\x1b[19~")
+        self.assertIn("▶ 4 │ needle two", area.buffer.document.current_line)
+        self.session._jump_owner_match(-1)
+        self.assertIn("▶ 2 │ needle one", area.buffer.document.current_line)
+        self.assertEqual(self.actions, [])
+
+    async def test_context_command_does_not_invoke_a_model(self):
+        await self.keys("/context\r")
+        self.assertEqual(self.actions, [])
+        self.assertIn("まだWork", self.session.info_text)
+
     async def test_temporary_chat_is_not_work_or_recall(self):
         await self.keys("//private question\r")
         self.assertEqual(self.actions[0][0], "temporary-chat")
@@ -240,9 +262,9 @@ class AttachmentTests(unittest.TestCase):
         value = {"format": WORK_REQUEST, "request": "Read attached page.", "attachments": records}
         common = {"model": "fixture-vision", "max_output_tokens": 2048}
         openai = payload({**common, "provider": "openai"}, value)
-        self.assertEqual(openai["input"][0]["content"][1]["type"], "input_image")
+        self.assertEqual(openai["input"][0]["content"][-1]["type"], "input_image")
         anthropic = payload({**common, "provider": "anthropic"}, value)
-        self.assertEqual(anthropic["messages"][0]["content"][1]["type"], "image")
+        self.assertEqual(anthropic["messages"][0]["content"][-1]["type"], "image")
         gemini = payload({**common, "provider": "gemini"}, value)
         self.assertIn("inlineData", gemini["contents"][0]["parts"][1])
         compatible = payload({**common, "provider": "openai_compatible",

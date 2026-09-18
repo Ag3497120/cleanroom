@@ -161,7 +161,7 @@ def _efforts(native):
     return ["default", "none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"]
 
 
-def apply_tuning(root, configuration, adapter, original_hash, effort, window):
+def apply_tuning(root, configuration, adapter, original_hash, effort, window, *, timeout=None):
     from .authority import require_current_approval_valid
     from .adapters.observations import read_document
     from .model_settings import _profile, _selection, _save_selection
@@ -175,6 +175,8 @@ def apply_tuning(root, configuration, adapter, original_hash, effort, window):
     if digest(native) != original_hash:
         raise LedgerError("CONFIG_CHANGED")
     value = deepcopy(native)
+    if timeout is not None:
+        value["timeout"] = timeout
     value.pop("context_window", None)
     if window is not None:
         value["context_window"] = window
@@ -195,12 +197,13 @@ def apply_tuning(root, configuration, adapter, original_hash, effort, window):
         from .claude_cli import validate_config
         selection_kind = "claude_subscription"
     elif kind == "verantyx.model-api.v1":
-        value.pop("reasoning_effort", None)
-        value.pop("thinking", None)
-        if value["provider"] == "ollama" and effort != "default":
-            value["thinking"] = {"on": True, "off": False}.get(effort, effort)
-        elif effort != "default":
-            value["reasoning_effort"] = effort
+        if effort is not None:
+            value.pop("reasoning_effort", None)
+            value.pop("thinking", None)
+            if value["provider"] == "ollama" and effort != "default":
+                value["thinking"] = {"on": True, "off": False}.get(effort, effort)
+            elif effort != "default":
+                value["reasoning_effort"] = effort
         directory = _profile(root, "connection")
         from .model_api import validate_config
         selection_kind = "model_api"
@@ -219,9 +222,28 @@ def apply_tuning(root, configuration, adapter, original_hash, effort, window):
     if roles.get("parent"):
         register(root, configuration, roles["parent"], str(paths[0]), confirmed=True)
     else:
-        label = value.get("provider", selection_kind) + " / " + value["model"] + " / " + effort
+        label = value.get("provider", selection_kind) + " / " + value["model"] + " / " + (effort or str(value["timeout"]) + "s")
         _save_selection(root, configuration, _selection(selection_kind, label, *paths, root))
     return {"ok": True, "status": "MODEL_SETTINGS_SAVED", "model_calls": 0}
+
+
+def set_timeout(root, configuration, seconds=None):
+    """Clone the selected profile; preserve its reasoning and sharing settings."""
+    from .agent_models import selected_work
+    from .adapters.observations import read_document
+    adapter = selected_work(root, configuration)
+    value = decode(read_document(adapter, 65536), 65536)
+    if value.get("format") != "verantyx.model-api.v1":
+        raise LedgerError("ARGUMENTS", {"reason": "TIMEOUT_API_ADAPTER_ONLY"})
+    from .model_timeouts import is_local, LOCAL_MAXIMUM
+    maximum = LOCAL_MAXIMUM if is_local(value) else 600
+    if seconds is None:
+        return {"ok": True, "timeout": value["timeout"], "maximum": maximum, "model_calls": 0}
+    if type(seconds) is not int or not 1 <= seconds <= maximum:
+        raise LedgerError("ARGUMENTS", {"reason": "TIMEOUT_RANGE"})
+    result = apply_tuning(root, configuration, adapter, digest(value), None,
+                          value.get("context_window"), timeout=seconds)
+    return {**result, "timeout": seconds, "maximum": maximum}
 
 
 def tune(root, configuration):

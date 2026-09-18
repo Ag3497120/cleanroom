@@ -52,6 +52,18 @@ def status(provider, executable=None):
               "state": "NOT_INSTALLED", "model_access_checked": False}
     if not executable:
         return result
+    if provider == "claude":
+        try:
+            help_result = subprocess.run([executable, "--help"], cwd=Path.home(), env=environment(provider),
+                                         stdin=subprocess.DEVNULL, capture_output=True, timeout=10, check=False)
+        except (OSError, subprocess.TimeoutExpired):
+            result["state"] = "CLI_START_FAILED"
+            return result
+        if (help_result.returncode != 0 or len(help_result.stdout) > 131072
+                or any(flag not in help_result.stdout for flag in (b"--safe-mode", b"--restricted", b"--system-prompt-snapshot"))):
+            # Old versions can interpret unknown subcommands as a paid prompt.
+            result["state"] = "UPDATE_REQUIRED"
+            return result
     arguments = ["login", "status"] if provider == "codex" else ["auth", "status"]
     try:
         completed = subprocess.run(

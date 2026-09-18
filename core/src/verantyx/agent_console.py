@@ -3,7 +3,7 @@ import unicodedata
 from .cleanroom_io import console_print as print
 
 from .agent_models import (activate_work_api, create_api_profile, reflection_setting,
-                           select_reflection)
+                           select_reflection, selected_work)
 from .errors import LedgerError
 
 
@@ -103,9 +103,9 @@ def _configure(root, configuration):
         action = ui._pick("Models & organization", ["work", "tune", "context", "roles", "same", "custom", "off", "organize"],
                           lambda value: {"work": "Choose Work AI", "tune": "Tune current model / effort and context",
                                          "context": "Context & compaction", "roles": "Parent / child model roles",
-                                         "same": "Reflection: same as Work AI (default)",
+                                         "same": "Reflection: same as Work AI (additional calls)",
                                          "custom": "Reflection: choose a different AI",
-                                         "off": "Reflection: off; keep work facts only",
+                                         "off": "Reflection: manual; no automatic extra calls (new-project default)",
                                          "organize": "Organize recorded work again"}[value])
         if action is None:
             return
@@ -140,11 +140,13 @@ def organize_menu(root, configuration, run_id=None):
     if not chosen:
         return
     perspective = ui._ask("Perspective / 見たい観点（空欄ならAIに任せる）")
-    label = reflection_setting(configuration)["label"]
+    setting = reflection_setting(configuration)
+    adapter = selected_work(root, configuration) if setting["mode"] == "off" else None
+    label = "Work AI" if adapter else setting["label"]
     print("This creates a fresh interpretation. Earlier viewpoints and human choices remain.")
     if not ui._start("Send this recorded work to " + label + "?"):
         return
-    result = ui._mutate(root, configuration, organize, chosen["run_id"], perspective=perspective)
+    result = ui._mutate(root, configuration, organize, chosen["run_id"], perspective=perspective, adapter=adapter)
     show_result(root, result)
 
 

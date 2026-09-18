@@ -103,13 +103,15 @@ def invocation_timeout(command, requested=None):
     Equal inner/outer deadlines killed the bridge before it could save the
     native result or error. Connection limits, not task keywords, set the cap.
     """
+    from .model_timeouts import process_limit
+    maximum = process_limit(command)
     if requested is not None:
-        if type(requested) not in (int, float) or not 0 < requested <= 600:
+        if type(requested) not in (int, float) or not 0 < requested <= maximum:
             raise LedgerError("ARGUMENTS")
         return requested
     for key in ("codex_cli", "claude_cli", "model_api"):
         if key in command:
-            return min(600, command[key]["timeout"] + 5)
+            return min(maximum, command[key]["timeout"] + 5)
     return 120
 
 
@@ -140,6 +142,9 @@ def invoke_prepared(root, model, command, request, *, key, timeout=None):
         require_current_approval_valid()
         journal.write("started", {"request_sha256": digest(request), "model": model})
         try:
+            from .progress import report
+            report("reflection" if "reflection" in request.get("format", "") else
+                   "compact" if "session-summary" in request.get("format", "") else "model")
             with BoundedProcess(command, timeout=timeout, max_output=524288) as process:
                 raw = process.document(request)
             document = decode(raw, 262144)
@@ -153,13 +158,15 @@ def invoke_prepared(root, model, command, request, *, key, timeout=None):
             raise
 
 
-def create_api_profile(root, *, provider, model, endpoint, key_env=None, allow_loopback_http=False):
+def create_api_profile(root, *, provider, model, endpoint, key_env=None, allow_loopback_http=False, timeout=None):
     from .model_api import validate_config
+    from .model_timeouts import default_timeout
     from .model_settings import _profile
     value = validate_config({
         "format": "verantyx.model-api.v1", "provider": provider, "model": model,
         "endpoint": endpoint, "key_env": key_env, "allow_loopback_http": allow_loopback_http,
-        "timeout": 120, "max_output_tokens": 8192, "max_response_bytes": 262144,
+        "timeout": default_timeout(provider, endpoint) if timeout is None else timeout,
+        "max_output_tokens": 8192, "max_response_bytes": 262144,
     })
     directory = _profile(root, "connection")
     for name in ("implementation.json", "verification.json"):

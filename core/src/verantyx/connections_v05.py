@@ -19,10 +19,11 @@ def _require(condition, reason, code="BRIDGE_CONFIG"):
 
 
 def configure_model(root, *, provider, model, endpoint, key_env, output, allow_loopback_http=False,
-                    timeout=30, max_output_tokens=4096, max_response_bytes=262144, thinking=False, context_window=None):
+                    timeout=None, max_output_tokens=4096, max_response_bytes=262144, thinking=False, context_window=None):
+    from .model_timeouts import default_timeout
     value = validate_config({"format": FORMAT, "provider": provider, "model": model, "endpoint": endpoint,
                              "key_env": key_env, "allow_loopback_http": allow_loopback_http,
-                             "timeout": timeout, "max_output_tokens": max_output_tokens,
+                             "timeout": default_timeout(provider, endpoint, cloud=30) if timeout is None else timeout, "max_output_tokens": max_output_tokens,
                              "max_response_bytes": max_response_bytes,
                              **({"thinking": thinking} if thinking else {}),
                              **({"context_window": context_window} if context_window is not None else {})})

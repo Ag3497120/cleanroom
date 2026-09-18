@@ -24,6 +24,7 @@ REASONS = frozenset((
     "CODEX_CALL_BUDGET_EXHAUSTED", "CODEX_REQUEST_ALREADY_RESERVED",
     "CODEX_TIMEOUT", "CODEX_TURN_FAILED",
     "CODEX_MODEL_UNAVAILABLE", "CODEX_LOGIN_REQUIRED", "CODEX_RATE_LIMIT",
+    "CLAUDE_UPDATE_REQUIRED", "CLAUDE_SESSION_MISMATCH", "CODEX_SESSION_MISMATCH",
 ))
 
 
@@ -58,6 +59,15 @@ def parse(raw):
     if type(event) is not dict:
         return None
     kind = event.get("kind")
+    if kind == "usage" and set(event) <= {"kind", "tokens", "source", "recording_failed"}:
+        from .model_usage import FIELDS
+        tokens = event.get("tokens")
+        if (type(tokens) is dict and set(tokens) <= set(FIELDS)
+                and all(type(value) is int and 0 <= value <= 2**40 for value in tokens.values())
+                and event.get("source") in ("provider", "local_cache")):
+            return {"kind": "usage", "tokens": tokens, "source": event["source"],
+                    "recording_failed": event.get("recording_failed") is True}
+        return None
     if kind in ("thinking",) and set(event) == {"kind", "text"} and type(event["text"]) is str and len(event["text"]) <= 512:
         return event
     if kind in ("thinking_truncated", "validated") and set(event) == {"kind"}:

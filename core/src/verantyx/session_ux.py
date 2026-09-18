@@ -21,7 +21,8 @@ class SessionCompleter(Completer):
         if text.startswith("/") and not text.startswith("//"):
             commands = ["/verantyx new", "/verantyx cleanroom", "/verantyx compact",
                         "/verantyx models", "/verantyx setup context", "/verantyx setup permissions",
-                        "/help", "/tutorial", "/queue", "/approvals", "/insights"]
+                        "/help", "/tutorial", "/queue", "/approvals", "/insights",
+                        "/web", "/browse", "/tools", "/usage", "/context", "/timeout 1800", "/copy", "/latest", "/fullscreen", "/split"]
             names = [row["name"] for row in self.session.room_catalog]
             commands += ["/" + name for name in names]
             commands += ["/verantyx cleanroom " + shlex.quote(name) for name in names]
@@ -75,7 +76,7 @@ class SessionUX:
             token, _, tail = rest.partition(" ")
             if token.casefold() in ("new", "compact", "cleanroom"):
                 command, name = token.casefold(), tail.strip()
-        elif head in ("/new", "/compact", "/cleanroom"):
+        elif head in ("/new", "/compact", "/cleanroom", "/timeout"):
             command, name = head[1:], rest
         else:
             name = value[1:].strip()
@@ -105,6 +106,16 @@ class SessionUX:
         return question.answer.result()
 
     def _session_operation(self, command, name="", plane="agent"):
+        if command == "timeout":
+            from .model_preferences import set_timeout
+            from .development_console import _mutate
+            if name and not name.isdecimal():
+                raise LedgerError("ARGUMENTS")
+            result = _mutate(self.root, self.configuration, set_timeout, int(name) if name else None)
+            self.loop.call_soon_threadsafe(self._session_message,
+                self._tr("Model timeout: ", "モデルの待ち時間: ") + str(result["timeout"]) + "s"
+                + " / " + self._tr("Maximum: ", "設定上限: ") + str(result["maximum"]) + "s\n/timeout 1800")
+            return result
         if command == "compact":
             from .session_context import compact_session
             from .development_console import _mutate

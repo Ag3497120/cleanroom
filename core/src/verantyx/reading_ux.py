@@ -11,7 +11,7 @@ from prompt_toolkit.document import Document
 from prompt_toolkit.filters import Condition
 from prompt_toolkit.layout import ScrollOffsets
 from prompt_toolkit.mouse_events import MouseButton, MouseEventType
-from prompt_toolkit.selection import SelectionType
+from prompt_toolkit.selection import SelectionState, SelectionType
 from prompt_toolkit.utils import get_cwidth
 
 from .presentation import safe_text
@@ -22,7 +22,7 @@ COPY = {
         "keys": "Empty Enter: Agent > Memo > Search | F2 Menu | F5 Full width | F6 Copy",
         "hint": "Small window: F5 expands this pane; enlarge/maximize your terminal for both.",
         "scroll": "PgUp/PgDn Scroll | Ctrl+Home Top | Ctrl+End Latest | F7 Terminal selection",
-        "reading": "Drag to select; Ctrl+C / F6 copies. Enter / Esc returns to input.",
+        "reading": "Drag + wheel / edge to extend | Ctrl+C / F6 Copy | Esc Input",
         "copied": "Copied to the system clipboard.",
         "local_copy": "Copied inside Cleanroom only. F7 enables terminal selection for OS copy.",
         "empty": "No text selected.",
@@ -43,7 +43,7 @@ COPY = {
         "keys": "空Enter: Agent > メモ > 検索 | F2 メニュー | F5 全幅 | F6 コピー",
         "hint": "小さい画面: F5で今の欄を全幅表示。両欄を見るには端末を拡大・全画面に。",
         "scroll": "PgUp/PgDn 読む | Ctrl+Home 先頭 | Ctrl+End 最新 | F7 端末の文字選択",
-        "reading": "ドラッグで選択、Ctrl+C / F6でコピー。Enter / Escで入力へ。",
+        "reading": "ドラッグ＋スクロールで選択拡大 | Ctrl+C / F6 コピー | Esc 入力へ",
         "copied": "システムのクリップボードへコピーしました。",
         "local_copy": "Cleanroom内にコピーしました。OSへのコピーはF7で端末の文字選択へ。",
         "empty": "コピーする文字が選択されていません。",
@@ -284,11 +284,13 @@ class ReadingUX:
         if state is not None and state.context == context and (
                 area.buffer.selection_state is not None or self.reading_drag is area or self.native_selection):
             state.unseen = state.unseen or raw != state.raw
-            if lexer:
-                lexer.rows = state.styles
-            return
+            # Freeze the source while selecting, but still reflow after a resize.
+            raw, source_styles = state.raw, list(getattr(state, "source_styles", source_styles))
         fresh = state is None or state.context != context
         if fresh:
+            area.buffer.exit_selection()
+            if self.reading_drag is area:
+                self.reading_drag = None
             state = Viewport(context, follow=name == "agent" and context[-1] == "chat")
             self.reading_views[name] = state
         width = self._pane_width("agent" if name == "system" else name)
@@ -299,6 +301,8 @@ class ReadingUX:
                 lexer.rows = state.styles
             return
         old_document = area.buffer.document
+        selection = area.buffer.selection_state
+        anchor = state.source_position(selection.original_cursor_position) if selection else None
         top_row = min(area.window.vertical_scroll, max(0, old_document.line_count - 1))
         top = state.source_position(old_document.translate_row_col_to_index(top_row, 0))
         cursor = state.source_position(old_document.cursor_position)
@@ -306,9 +310,12 @@ class ReadingUX:
             top, cursor = _anchor(state.raw, raw, top), _anchor(state.raw, raw, cursor)
             state.unseen = state.unseen or raw != state.raw
         state.compose(raw, width, source_styles)
+        state.source_styles = source_styles
         position = len(state.display) if state.follow else state.display_position(cursor)
         document = Document(state.display, cursor_position=position)
         area.buffer.set_document(document, bypass_readonly=True)
+        if selection is not None:
+            area.buffer.selection_state = SelectionState(state.display_position(anchor), selection.type)
         if state.follow:
             state.unseen = False
         else:
@@ -330,6 +337,12 @@ class ReadingUX:
             second = (notice if time.monotonic() < until else
                       self._rt("new") if unseen and unseen.unseen else
                       self._rt("hint") if self._compact_ui() else self._rt("scroll"))
+            name, area = self._reading_target()
+            info = area.window.render_info
+            if info and area.buffer.document.line_count > info.window_height:
+                first_row = area.window.vertical_scroll + 1
+                last_row = min(area.buffer.document.line_count, first_row + info.window_height - 1)
+                second = f"{first_row}–{last_row}/{area.buffer.document.line_count} | " + second
             lines = [first, second]
         return "\n".join(" " + fit_text(line, max(1, size.columns - 2)) for line in lines)
 
@@ -344,7 +357,15 @@ class ReadingUX:
         elif self.question is not None:
             state = self._ux("owner_question")
         caption = "CLEANROOM / " + str(project) + (" / " + state if state else "")
-        return " " + fit_text(caption, size.columns - 2) + "\n " + fit_text(self.model_label, size.columns - 2)
+        web = "Web: ON" if getattr(self, "web_enabled", False) else "Web: OFF"
+        return " " + fit_text(caption, size.columns - 2) + "\n " + fit_text(
+            web + " /tools | " + self._reflection_hint() + " | " + self.model_label, size.columns - 2)
+
+    def _reflection_hint(self):
+        mode = self.configuration.get("runtime", {}).get("reflection", {}).get("mode", "same")
+        return {"same": self._tr("Reflection: same AI", "整理: 同じAI"),
+                "custom": self._tr("Reflection: separate AI", "整理: 別のAI"),
+                "off": self._tr("Reflection: manual", "整理: 手動")}.get(mode, "Reflection: ?")
 
     def _work_indicator(self):
         return self.native_indicator if self.native_selection else super()._work_indicator()
@@ -372,7 +393,7 @@ class ReadingUX:
         area.window.vertical_scroll_2 = 0
         self.app.invalidate()
 
-    def _copy_reading(self, only_selection=False):
+    def _copy_reading(self, only_selection=False, keep_selection=True):
         buffer = self.app.current_buffer
         selected = buffer.selection_state is not None
         if only_selection and not selected:
@@ -382,7 +403,7 @@ class ReadingUX:
                                if area.buffer is buffer), (None, None))
             state = self.reading_views.get(name)
             if state:
-                text = "\n".join(state.raw[state.source_position(first):state.source_position(last + 1)]
+                text = "\n".join(state.raw[state.source_position(first):state.source_position(last)]
                                  for first, last in buffer.document.selection_ranges())
             else:
                 text = buffer.copy_selection().text
@@ -399,10 +420,21 @@ class ReadingUX:
             self.reading_notice = (self._rt("copied" if copied else "local_copy"), time.monotonic() + 8)
         else:
             self.reading_notice = (self._rt("empty"), time.monotonic() + 5)
-        if selected:
+        if selected and not keep_selection:
             buffer.exit_selection()
         self._render()
         return True
+
+    def _finish_reading_drag(self):
+        area, self.reading_drag = self.reading_drag, None
+        if hasattr(self, "reading_scroll"):
+            self.reading_scroll.stop()
+        # Terminal.app consumes Cmd+C instead of sending it over the PTY.
+        # Copy the explicit mouse selection on release, retaining its highlight.
+        if sys.platform == "darwin" and area is not None and area.buffer.selection_state is not None:
+            self.app.layout.focus(area)
+            self._copy_reading(only_selection=True)
+        self.app.invalidate()
 
     def _clear_reading_selection(self):
         for area in self._reading_areas().values():
@@ -413,8 +445,12 @@ class ReadingUX:
         return False
 
     def _toggle_native_selection(self):
+        self.reading_drag = None
+        if hasattr(self, "reading_scroll"):
+            self.reading_scroll.stop()
         if not self.native_selection:
             self.native_header, self.native_indicator = self._header(), self._work_indicator()
+            self.native_context_line = self._context_line() if hasattr(self, "_context_line") else ""
         self.native_selection = not self.native_selection
         if not self.native_selection:
             self.reading_notice = (self._rt("resumed"), time.monotonic() + 5)
@@ -424,6 +460,12 @@ class ReadingUX:
     def _show_help(self):
         super()._show_help()
         self.info_text += "\n\n" + self._rt("help")
+        self.info_text += "\n\n" + self._tr(
+            "Hold the mouse at the top/bottom edge to extend a selection automatically. Wheel and PgUp/PgDn preserve the anchor. On Mac, releasing a mouse selection copies it to the system clipboard; Cmd+C is handled by the terminal. F6 copies again.\n/web QUERY searches the web. /browse URL reads a page. /tools sets up the built-in Web MCP connection.",
+            "マウスを欄の上端・下端へドラッグすると自動スクロールします。ホイール・PgUp/PgDnでも選択の始点を保持します。Macでは選択を離すとクリップボードへコピーします（Command+Cは端末側の操作）。F6でも再コピーできます。\n/web 検索語 でWeb検索、/browse URL で本文取得、/tools で内蔵Web MCPを設定できます。")
+        self.info_text += "\n\n" + self._tr(
+            "Owner search covers this notebook's complete saved history. Enter/F8: next matching line; Esc then F8: previous.\n/context: prepared request byte shares. /usage: reported tokens and cache. /timeout 1800: set the selected API model deadline to 30 minutes.",
+            "Owner検索はこのノートの保存済み全履歴が対象です。Enter/F8で次の該当行、Esc→F8で前へ。\n/context: 依頼のバイト内訳。/usage: 報告されたトークンとキャッシュ。/timeout 1800: 選択中のAPIモデルの待ち時間を30分へ。")
         self._render()
 
     def _handle_control(self, value, buffer):
@@ -468,8 +510,7 @@ class ReadingUX:
                             state.follow = False
                 result = original(event)
                 if event.event_type == MouseEventType.MOUSE_UP and self.reading_drag is area:
-                    self.reading_drag = None
-                    self.app.invalidate()
+                    self._finish_reading_drag()
                 return result
             area.control.mouse_handler = mouse
 

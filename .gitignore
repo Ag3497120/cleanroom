@@ -53,3 +53,4 @@ next-env.d.ts
 /dependencies/
 /core/src/verantyx/cross-build.json
 /.local-development/
+/.verantyx/

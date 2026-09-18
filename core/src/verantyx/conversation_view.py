@@ -211,13 +211,17 @@ class Conversation:
 
 def owner_page(view, items, query, personal, visible_lessons, width, lang, lexer):
     """Facts and proposals use separate, labelled sections, not a success score."""
-    from .cleanroom_owner import search
+    from .cleanroom_owner import search, normal, KINDS, KINDS_EN
     page = Page(width)
     projection = view.get("ownership_projection") or {}
     matched = search(items, query)
     page.add(tr("owner_title", lang), "class:owner.heading")
     from .session_text import t as session_text
     memo_page = view.get("memo_page", {})
+    if view.get("owner_archive"):
+        total = memo_page.get("total", 0)
+        page.add(("ノート内の全履歴" if lang == "ja" else "All history in this notebook")
+                 + f" / {total:,}", "class:chat.meta")
     if memo_page.get("total", 0) > memo_page.get("limit", 200):
         page.add(session_text("memo_paging", lang, first=memo_page["offset"] + 1,
                               last=min(memo_page["offset"] + memo_page["limit"], memo_page["total"]),
@@ -225,10 +229,21 @@ def owner_page(view, items, query, personal, visible_lessons, width, lang, lexer
     if query:
         page.section(tr("owner_index", lang))
         page.add(query, "class:owner.query")
+        page.add("Enter / F8: " + ("次の該当行 · Esc → F8: 前の該当行" if lang == "ja"
+                                   else "Next match · Esc then F8: Previous match"), "class:chat.meta")
         for item in matched:
-            page.add(item["label"], "class:owner.label")
-            if item.get("text", "").strip() != item["label"]:
-                page.add(item.get("text", ""))
+            heading = (KINDS if lang == "ja" else KINDS_EN)[item["kind"]]
+            heading += " / " + item.get("created_at", "") + " / " + (item.get("run_id") or "")
+            found = any(term in normal(heading) for term in normal(query).split())
+            page.add(("▶ " if found else "") + heading, "class:owner.match" if found else "class:chat.meta")
+            body = item.get("text", item["label"])
+            if item["label"] not in body:
+                found = any(term in normal(item["label"]) for term in normal(query).split())
+                page.add(("▶ " if found else "") + item["label"], "class:owner.match" if found else "class:owner.label")
+            for number, line in enumerate(body.splitlines(), 1):
+                found = any(term in normal(line) for term in normal(query).split())
+                page.add(("▶ " if found else "  ") + str(number) + " │ " + line,
+                         "class:owner.match" if found else "")
             page.add()
         return page.finish(lexer)
     from .session_text import t as session_text
@@ -316,11 +331,13 @@ def owner_page(view, items, query, personal, visible_lessons, width, lang, lexer
             page.add(item.get("text") or item["label"])
         if not requests:
             page.add(tr("owner_empty", lang), "class:chat.meta")
-    notes = [row for row in matched if row["kind"] == "note"]
+    notes = matched if view.get("owner_archive") else [row for row in matched if row["kind"] == "note"]
     if notes:
-        page.section(tr("owner_notes", lang))
+        page.section(("会話とメモの履歴" if lang == "ja" else "Conversation and memo history")
+                     if view.get("owner_archive") else tr("owner_notes", lang))
         for item in notes:
-            page.add(item.get("created_at", ""), "class:chat.meta")
+            page.add((KINDS if lang == "ja" else KINDS_EN)[item["kind"]] + " / "
+                     + item.get("created_at", "") + " / " + (item.get("run_id") or ""), "class:chat.meta")
             page.add(item["label"], "class:owner.label")
             if item.get("text") != item["label"]:
                 page.add(item.get("text", ""))

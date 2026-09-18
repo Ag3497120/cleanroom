@@ -36,11 +36,15 @@ class HTTPFixture:
                 body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
                 fixture.calls.append({"path": self.path, "headers": dict(self.headers), "body": body})
                 if "messages" in body:
-                    provider, value = "anthropic", json.loads(body["messages"][0]["content"])
+                    content = body["messages"][0]["content"]
+                    provider, value = "anthropic", json.loads(content if isinstance(content, str) else
+                        "".join(block["text"] for block in content if block["type"] == "text"))
                 elif "contents" in body:
                     provider, value = "gemini", json.loads(body["contents"][0]["parts"][0]["text"])
                 elif "input" in body:
-                    provider, value = "openai", json.loads(body["input"])
+                    content = body["input"]
+                    provider, value = "openai", json.loads(content if isinstance(content, str) else
+                        "".join(block["text"] for message in content for block in message["content"] if block["type"] == "input_text"))
                 else:
                     provider, value = "ollama", json.loads(body["prompt"])
                 result = deepcopy(value.get("proposal_template", value.get("response_template")))
